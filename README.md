@@ -1,6 +1,6 @@
 # Elevated isoform richness in males largely reflects transcriptional noise
 
-Scripts from manuscript https://doi.org/10.64898/2026.08.10.744030.
+Code for manuscript https://doi.org/10.64898/2026.08.10.744030.
 
 ## Directory structure
 
