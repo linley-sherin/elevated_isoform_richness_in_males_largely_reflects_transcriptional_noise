@@ -21,6 +21,7 @@
 
 # ...and this file
 !.gitignore
+!README.md
 
 # Folders to leave out completely
 data/
