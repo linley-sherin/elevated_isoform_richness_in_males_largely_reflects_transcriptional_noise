@@ -1,13 +1,33 @@
-#  Use edgeR with kallisto counts to run a bunch of expression analyses
+## Step 16: edgeR expression filter on the long-read kallisto counts
+## Last modified by Linley Sherin 2026-10-27
 #
 # FILTER NOTICE: Filter genes without >1TPM in 3/6 samples of a sex
 #
-# Long-reads
+# Runs locally.
 # (1) Load raw count matrices (kallisto) - includes overdispersion correction
 # (2) Create DGE objects, inspect CPM distribution and determine CPM cut-off
 # (3) Subset DGE objects by tissue and apply filter at gene level
 # (4) Save filtered DGE objects for DE
 # (5) Filter over files by filter outputs
+#
+# Usage (from the project folder):
+#   /usr/local/bin/Rscript 01_build_longread_transcriptome/16_edgeR_filterexp.R
+#
+# Reads:  data/01_build_longread_transcriptome/15_kallisto/kallisto_long/flnc_<sample>.fastq/quant_unfiltered/abundance_1/
+#         data/01_build_longread_transcriptome/metadata.csv
+#         data/GTF/03_nonredundant_transcriptome.gtf
+#         data/01_build_longread_transcriptome/12_sqanti_filter/SQANTI_filtered_RulesFilter_result_classification.txt
+#         data/01_build_longread_transcriptome/14_remove_redundancy/rosetta_stone.csv
+# Writes: data/01_build_longread_transcriptome/16_edgeR_filterexp/
+#           dispersion_output.csv
+#           01_gonadtran_*.csv, 02_tailtran_*.csv     count and TMM-TPM matrices
+#           01_eR_gene/trangonad.RData, 02_eR_gene/trantail.RData   filtered DGE objects
+#           SQANTI_classification_filtered.csv
+#           04_filtered_by_exp_long.gtf
+#         data/GTF/04_filtered_by_exp_long.gtf
+#         figures/16_histogram_geneTPM_long.png, 16_histogram_isoformTPM_long.png
+#
+# Overwrites its outputs every time it runs.
 
 library(tidyr)
 library(ggplot2)
@@ -181,7 +201,7 @@ ggplot(df_long, aes(x = logTPM, color = Sample)) +
 
 # Save 
 ggsave(here::here("figures", 
-                  "04_histogram_geneTPM_long.png"), 
+                  "16_histogram_geneTPM_long.png"), 
        width = 12, 
        height = 10, 
        dpi = 300)
@@ -273,7 +293,7 @@ ggplot(df_long, aes(x = logTPM, color = Sample)) +
 
 # Save 
 ggsave(here::here("figures", 
-                  "04_histogram_isoformTPM_long.png"), 
+                  "16_histogram_isoformTPM_long.png"), 
        width = 12, 
        height = 10, 
        dpi = 300)

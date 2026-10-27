@@ -7,7 +7,7 @@
 # are reused across cells and the SM tag (BioSample1-12) is duplicated. This
 # step sets SM to the real sample ID, using updatebam.csv:
 #   input_bam,output_bam,new_sample_name
-#   03_refine/cell1/flnc_IsoSeqX_bc01_5p--IsoSeqX_3p.bam,04_updatebam/flnc_3FGP.bam,3FGP
+#   03_refine/cell1/flnc_IsoSeqX_bc01_5p--IsoSeqX_3p.bam,04_updatebam/flnc_RFG3.bam,RFG3
 # (paths relative to data/01_build_longread_transcriptome/)
 #
 # Usage (on the cluster, from the project folder):

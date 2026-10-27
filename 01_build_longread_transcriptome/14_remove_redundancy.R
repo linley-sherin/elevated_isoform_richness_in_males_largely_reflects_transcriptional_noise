@@ -1,9 +1,11 @@
-### 
-### Despite attempting to collapse redundancy and 5' end, the gtf output from
-### SQANTI3 still has both. So here I am further filtering my gtf/transcriptome
-### before quantifying to remove redundancy and potentially degraded transcripts
-###
-
+## Step 14: remove redundant and degraded isoforms from the SQANTI-filtered transcriptome
+## Last modified by Linley Sherin 2026-10-27
+#
+# Despite attempting to collapse redundancy and 5' end, the gtf output from
+# SQANTI3 still has both. So here I am further filtering my gtf/transcriptome
+# before quantifying to remove redundancy and potentially degraded transcripts
+#
+# Runs locally.
 # (1) Load
 # (2) Create SJ whitelist so that LRT and SRT are comparable
 # (3) Correct exon-structure redundancy
@@ -16,6 +18,25 @@
 # (8) Remove non-autosomal genes
 # (9) Save results
 # (10) Filter fasta to match
+#
+# Usage (from the project folder):
+#   /usr/local/bin/Rscript 01_build_longread_transcriptome/14_remove_redundancy.R
+#
+# Reads:  data/GTF/02_SQANTI_filtered.gtf
+#         data/01_build_longread_transcriptome/06_mapcollapse/collapsed.abundance.txt
+#         data/01_build_longread_transcriptome/09_star/*SJ.out.tab
+#         data/01_build_longread_transcriptome/11_sqanti_qc/output/SQANTI_output_junctions.txt
+#         data/01_build_longread_transcriptome/12_sqanti_filter/
+#           SQANTI_filtered_RulesFilter_result_classification.txt, SQANTI_filtered.filtered.fasta
+#         data/01_build_longread_transcriptome/13_transdecoder/parsed_results.csv
+# Writes: data/01_build_longread_transcriptome/14_remove_redundancy/
+#           junction_whitelist.csv
+#           nonredundant_transcripts.fasta   input to step 15
+#           rosetta_stone.csv                old -> new gene/transcript IDs, input to step 16
+#           03_nonredundant_transcriptome.gtf
+#         data/GTF/03_nonredundant_transcriptome.gtf
+#
+# Overwrites its outputs every time it runs.
 
 library(data.table)
 library(dplyr)

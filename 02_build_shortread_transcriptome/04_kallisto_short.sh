@@ -17,11 +17,11 @@
 # Reads:  data/02_build_shortread_transcriptome/03_filter_stringtie/merged_filtered.gtf
 #         data/reference/ncbi_female.fa
 #         data/01_build_longread_transcriptome/08_trimmomatic/<sample>_R{1,2}_paired.fastq.gz
-# Writes: data/02_build_shortread_transcriptome/
-#           data/GTF/05_shortreadpipe.gtf     copy of merged_filtered.gtf, input to step 05
-#           04_kallisto/shortreadpipe.fasta, t2g.txt, kallisto_index_short.idx
-#           04_kallisto/kallisto_short/<sample>/
-#           04_kallisto/maprate_short.txt
+# Writes: data/02_build_shortread_transcriptome/04_kallisto/
+#           shortreadpipe.fasta, t2g.txt, kallisto_index_short.idx
+#           kallisto_short/<sample>/   kb output per sample, input to step 05
+#           maprate_short.txt
+#         data/GTF/05_shortreadpipe.gtf   copy of merged_filtered.gtf, input to step 05
 #
 # (1) is skipped if shortreadpipe.fasta already exists, the index if it already
 # exists, and a sample if its run_info.json already exists. Delete them to redo.
