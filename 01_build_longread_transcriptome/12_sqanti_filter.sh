@@ -17,7 +17,7 @@
 #
 # Reads:  data/01_build_longread_transcriptome/11_sqanti_qc/output/SQANTI_output_classification.txt,
 #           SQANTI_output_corrected.fasta, SQANTI_output_corrected.gtf
-#         data/01_build_longread_transcriptome/12_sqanti_filter/filter_new_filterstruc.json
+#         data/reference/filter_new_filterstruc.json
 # Writes: data/01_build_longread_transcriptome/12_sqanti_filter/
 #           SQANTI_filtered.filtered.gtf, .fasta    input to steps 13 and 14
 #           SQANTI_filtered_RulesFilter_result_classification.txt, ..._filtering_reasons.txt, report
@@ -32,7 +32,7 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 DATA=$ROOT/data/01_build_longread_transcriptome
 QC=$DATA/11_sqanti_qc/output
 OUT=$DATA/12_sqanti_filter
-RULES=$OUT/filter_new_filterstruc.json
+RULES=$ROOT/data/reference/filter_new_filterstruc.json
 SQANTI_FILTER=~/Documents/programs/SQANTI3-5.2.2/sqanti3_filter.py
 
 for f in "$QC/SQANTI_output_classification.txt" "$QC/SQANTI_output_corrected.fasta" "$QC/SQANTI_output_corrected.gtf" "$RULES"; do
@@ -43,6 +43,8 @@ if [[ -f "$OUT/SQANTI_filtered.filtered.gtf" ]]; then
     echo "SQANTI_filtered.filtered.gtf already exists, skipping"
     exit 0
 fi
+
+mkdir -p "$OUT"
 
 echo "Running SQANTI3 rules filter..."
 date
