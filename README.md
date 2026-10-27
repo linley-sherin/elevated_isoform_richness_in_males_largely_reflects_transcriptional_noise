@@ -1,6 +1,6 @@
 # Elevated isoform richness in males largely reflects transcriptional noise
 
-Scripts for building long-read and short-read guppy transcriptomes and analysing isoform diversity between the sexes.
+Scripts from manuscript https://doi.org/10.64898/2026.08.10.744030.
 
 ## Directory structure
 
@@ -14,7 +14,7 @@ data/                              inputs and outputs, one folder per section (n
 
 Scripts are numbered in the order they are run, and each writes to a matching folder in `data/`
 (e.g. `01_build_longread_transcriptome/09_illumina_star.sh` → `data/01_build_longread_transcriptome/09_star/`).
-Helper R code called by the scripts is in each section's `lib/` folder. Figures are named after the script that makes them.
+Helper R code called by the scripts is in each section's `lib/` folder. Figures are numbered after the script that makes them.
 
 ### 01_build_longread_transcriptome
 
