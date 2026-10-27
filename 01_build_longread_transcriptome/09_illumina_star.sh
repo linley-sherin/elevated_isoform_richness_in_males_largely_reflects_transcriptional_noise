@@ -17,13 +17,13 @@
 # Reads:  data/01_build_longread_transcriptome/08_trimmomatic/<sample>_R{1,2}_paired.fastq.gz
 #         data/reference/ncbi_female.fa
 # Writes: data/01_build_longread_transcriptome/09_star/
-#           STAR_index/                                 genome index
-#           STAR_mapping/<sample>Aligned.sortedByCoord.out.bam
-#           STAR_mapping/<sample>SJ.out.tab             splice junctions
-#           STAR_mapping/<sample>Log.final.out, ...
+#           index/                                genome index
+#           <sample>_Aligned.sortedByCoord.out.bam
+#           <sample>_SJ.out.tab                   splice junctions
+#           <sample>_Log.final.out, ...
 #
-# The index is skipped if STAR_index/SA already exists, and a sample is skipped
-# if its SJ.out.tab already exists. Delete them to redo either part.
+# The index is skipped if index/SA already exists, and a sample is skipped
+# if its <sample>_SJ.out.tab already exists. Delete them to redo either part.
 
 set -euo pipefail
 
@@ -33,7 +33,7 @@ DATA=$ROOT/data/01_build_longread_transcriptome
 IN=$DATA/08_trimmomatic
 GENOME=$ROOT/data/reference/ncbi_female.fa
 OUT=$DATA/09_star
-INDEX=$OUT/STAR_index
+INDEX=$OUT/index
 INDEX_THREADS=4     # speed only, does not change results
 MAP_THREADS=40      # speed only, does not change results
 
@@ -43,7 +43,7 @@ shopt -s nullglob
 r1_files=("$IN"/*_R1_paired.fastq.gz)
 [[ ${#r1_files[@]} -gt 0 ]] || { echo "ERROR: no *_R1_paired.fastq.gz files in $IN. Run step 08 first." >&2; exit 1; }
 
-mkdir -p "$INDEX" "$OUT/STAR_mapping"
+mkdir -p "$INDEX"
 
 ## Create a STAR index of the guppy genome
 if [[ -f "$INDEX/SA" ]]; then
@@ -62,7 +62,7 @@ fi
 ## Map each sample to the genome
 for r1 in "${r1_files[@]}"; do
     sample=$(basename "$r1" _R1_paired.fastq.gz)
-    prefix=$OUT/STAR_mapping/$sample
+    prefix=$OUT/${sample}_
 
     if [[ -f "${prefix}SJ.out.tab" ]]; then
         echo "$sample already done, skipping"

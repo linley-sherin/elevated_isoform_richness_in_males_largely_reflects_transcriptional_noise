@@ -89,12 +89,10 @@ write.csv(dispersion_df,
 ### Create metadata
 
 # Your vector of all sample names
-all_samples <- c("1FGP", "1FTP", "1MGP", "1MTP",
-                 "2FGP", "2FTP", "2MGP", "2MTP",
-                 "3FGP", "3FTP", "3MGP", "3MTP",
-                 "4FGP", "4FTP", "4MGP", "4MTP",
-                 "5FGP", "5FTP", "5MGP", "5MTP",
-                 "6FGP", "6FTP", "6MGP", "6MTP")
+all_samples <- c("RFG1", "RFG2", "RFG3", "RFG4", "RFG5", "RFG6",
+                 "RFT1", "RFT2", "RFT3", "RFT4", "RFT5", "RFT6",
+                 "RMG1", "RMG2", "RMG3", "RMG4", "RMG5", "RMG6",
+                 "RMT1", "RMT2", "RMT3", "RMT4", "RMT5", "RMT6")
 
 # Combine into a metadata data frame
 sample_info <- data.frame(
@@ -125,7 +123,7 @@ dge <- DGEList(counts = y$counts / y$annotation$Overdispersion,
 ### Add sample info to dge object (fixing directory names)
 rownames(sample_info) <- sample_info$sample
 # Replace column names with the part after flnc_ and before the next "\\"
-colnames(dge) <- sub(".*flnc_([0-9][A-Z]{3}).*", "\\1", colnames(dge))
+colnames(dge) <- sub(".*flnc_(R[FM][GT][0-9]).*", "\\1", colnames(dge))
 # Check the new column names
 print(colnames(dge))
 all(rownames(sample_info) == colnames(dge))  # should return TRUE
@@ -159,7 +157,7 @@ dge_gene$samples$lib.size.1 <- NULL
 ### Look at gene-level TPM distribution
 
 counts <- data.frame(dge_gene)
-sample_totals <- colSums(counts[, grep("^X[0-9]+(FGP|FTP|MGP|MTP)$", names(counts))])
+sample_totals <- colSums(counts[, grep("^R(FG|FT|MG|MT)[0-9]+$", names(counts))])
 data.frame(sample_totals)
 
 # Calculate log2 TPM with prior.count = 1 (do this before normalizing)

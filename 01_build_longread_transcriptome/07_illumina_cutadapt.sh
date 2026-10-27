@@ -25,6 +25,7 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 DATA=$ROOT/data/01_build_longread_transcriptome
 IN=$DATA/00_rawillumina
 OUT=$DATA/07_cutadapt
+THREADS=16          # speed only, does not change results
 
 shopt -s nullglob
 r1_files=("$IN"/*_R1.fastq.gz)
@@ -49,6 +50,7 @@ for r1 in "${r1_files[@]}"; do
     echo "Processing: $sample"
     # Minimum length 25 so that reads entirely removed by nextseq-trim are filtered out
     cutadapt --nextseq-trim=20 \
+        -j "$THREADS" \
         --minimum-length 25 \
         -o "$OUT/${sample}_R1.fastq.gz" \
         -p "$OUT/${sample}_R2.fastq.gz" \

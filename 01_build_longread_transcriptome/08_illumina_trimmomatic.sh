@@ -30,6 +30,7 @@ IN=$DATA/07_cutadapt
 OUT=$DATA/08_trimmomatic
 ADAPTERS=$ROOT/data/reference/TruSeq3-PE-2.fa
 TRIMMOMATIC=~/Documents/programs/Trimmomatic-0.39/trimmomatic-0.39.jar
+THREADS=16          # speed only, does not change results
 
 [[ -f "$ADAPTERS" ]] || { echo "ERROR: adapter file $ADAPTERS not found" >&2; exit 1; }
 [[ -f "$TRIMMOMATIC" ]] || { echo "ERROR: Trimmomatic not found at $TRIMMOMATIC" >&2; exit 1; }
@@ -55,6 +56,7 @@ for r1 in "${r1_files[@]}"; do
     # Crop the last 5 bp (CROP:145) because cutadapt poly-G trimming introduces a
     # bias against G nucleotides at this end
     java -jar "$TRIMMOMATIC" PE \
+        -threads "$THREADS" \
         "$IN/${sample}_R1.fastq.gz" \
         "$IN/${sample}_R2.fastq.gz" \
         "$OUT/${sample}_R1_paired.fastq.gz" \

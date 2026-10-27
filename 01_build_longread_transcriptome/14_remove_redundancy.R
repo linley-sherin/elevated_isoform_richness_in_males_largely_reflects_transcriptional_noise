@@ -85,7 +85,7 @@ orf_df <- read.csv(here::here("data",
 # comparable
 
 # SJ.out.tab directory
-sj_dir <- "/Volumes/mankbank_new/linley/ch2_splicing_reticulata/data/reticulata_illumina_nojuv/03_STAR_ncbi/output/STAR_mapping"
+sj_dir <- here::here("data", "01_build_longread_transcriptome", "09_star")
 
 # Get all SJ.out.tab files (non-recursive)
 files <- list.files(
