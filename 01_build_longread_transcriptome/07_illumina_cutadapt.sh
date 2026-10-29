@@ -25,7 +25,8 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 DATA=$ROOT/data/01_build_longread_transcriptome
 IN=$DATA/00_rawillumina
 OUT=$DATA/07_cutadapt
-THREADS=16          # speed only, does not change results
+THREADS=40          # speed only, does not change results
+FASTQC_THREADS=12   # files checked at once, speed only
 
 shopt -s nullglob
 r1_files=("$IN"/*_R1.fastq.gz)
@@ -60,13 +61,16 @@ done
 echo "Completed Cutadapt"
 date
 
-# FastQC
+# FastQC, several files at a time (files that already have a report are skipped)
+todo=()
 for fq in "$OUT"/*.fastq.gz; do
     report=$OUT/fastqc/$(basename "$fq" .fastq.gz)_fastqc.html
-    [[ -f "$report" ]] && continue
-    echo "Running FastQC on $(basename "$fq")..."
-    fastqc "$fq" -o "$OUT/fastqc"
+    [[ -f "$report" ]] || todo+=("$fq")
 done
+if [[ ${#todo[@]} -gt 0 ]]; then
+    echo "Running FastQC on ${#todo[@]} files, $FASTQC_THREADS at a time..."
+    fastqc -t "$FASTQC_THREADS" -o "$OUT/fastqc" "${todo[@]}"
+fi
 
 # MultiQC
 conda run -n multiqc_env multiqc -f "$OUT/fastqc" -o "$OUT/fastqc"

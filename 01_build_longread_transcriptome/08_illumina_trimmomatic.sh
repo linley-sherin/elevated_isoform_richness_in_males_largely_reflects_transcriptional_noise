@@ -29,8 +29,9 @@ DATA=$ROOT/data/01_build_longread_transcriptome
 IN=$DATA/07_cutadapt
 OUT=$DATA/08_trimmomatic
 ADAPTERS=$ROOT/data/reference/TruSeq3-PE-2.fa
-TRIMMOMATIC=~/Documents/programs/Trimmomatic-0.39/trimmomatic-0.39.jar
-THREADS=16          # speed only, does not change results
+TRIMMOMATIC=$ROOT/tools/Trimmomatic-0.39/trimmomatic-0.39.jar
+THREADS=4           # speed only, does not change results
+FASTQC_THREADS=4    # files checked at once, speed only
 
 [[ -f "$ADAPTERS" ]] || { echo "ERROR: adapter file $ADAPTERS not found" >&2; exit 1; }
 [[ -f "$TRIMMOMATIC" ]] || { echo "ERROR: Trimmomatic not found at $TRIMMOMATIC" >&2; exit 1; }
@@ -74,13 +75,16 @@ done
 echo "Completed Trimmomatic."
 date
 
-# FastQC
+# FastQC, several files at a time (files that already have a report are skipped)
+todo=()
 for fq in "$OUT"/*_paired.fastq.gz; do
     report=$OUT/fastqc/$(basename "$fq" .fastq.gz)_fastqc.html
-    [[ -f "$report" ]] && continue
-    echo "Running FastQC on $(basename "$fq")..."
-    fastqc "$fq" -o "$OUT/fastqc"
+    [[ -f "$report" ]] || todo+=("$fq")
 done
+if [[ ${#todo[@]} -gt 0 ]]; then
+    echo "Running FastQC on ${#todo[@]} files, $FASTQC_THREADS at a time..."
+    fastqc -t "$FASTQC_THREADS" -o "$OUT/fastqc" "${todo[@]}"
+fi
 
 # MultiQC
 conda run -n multiqc_env multiqc -f "$OUT/fastqc" -o "$OUT/fastqc"
