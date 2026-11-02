@@ -1,7 +1,7 @@
 #!/bin/bash
 
 ## Step 09 (Illumina): STAR index + mapping, for splice junctions and coverage in SQANTI3
-## Last modified by Linley Sherin 2026-10-22
+## Last modified by Linley Sherin 2026-11-01
 #
 # Runs locally. SQANTI3 can run STAR itself, but I had issues with it, so this
 # runs STAR separately with the same options SQANTI3 uses.
@@ -35,7 +35,9 @@ GENOME=$ROOT/data/reference/ncbi_female.fa
 OUT=$DATA/09_star
 INDEX=$OUT/index
 INDEX_THREADS=4     # speed only, does not change results
-MAP_THREADS=40      # speed only, does not change results
+MAP_THREADS=16      # speed only, does not change results
+# STAR's temp files (~70 GB per sample) go on the internal drive, not the slow USB drive
+STAR_TMP=${TMPDIR:-/tmp}/star_09
 
 [[ -f "$GENOME" ]] || { echo "ERROR: genome $GENOME not found" >&2; exit 1; }
 
@@ -71,7 +73,9 @@ for r1 in "${r1_files[@]}"; do
 
     echo "Mapping: $sample"
     date
+    rm -rf "$STAR_TMP"   # STAR wants a fresh temp folder
     STAR --genomeDir "$INDEX" \
+        --outTmpDir "$STAR_TMP" \
         --readFilesIn "$IN/${sample}_R1_paired.fastq.gz" "$IN/${sample}_R2_paired.fastq.gz" \
         --readFilesCommand gzcat \
         --outFileNamePrefix "$prefix" \
