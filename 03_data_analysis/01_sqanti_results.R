@@ -1,8 +1,22 @@
-# Look at SQANTI results for isoforms
-
+## Step 01: Look at SQANTI results for isoforms
+## Last modified by Linley Sherin 2026-11-03
+#
+# Runs locally.
 # (1) Plot # annotated gene/isoforms
-# (2) look at sqanti categories
+# (2) Look at sqanti categories
 # (3) Replot after removing certain categories
+#
+# Usage (from the project folder):
+#   /usr/local/bin/Rscript 03_data_analysis/01_sqanti_results.R
+#
+# Reads:  data/01_build_longread_transcriptome/16_edgeR_filterexp/
+#           01_gonadtran_TMMTPMmatrix.csv, 02_tailtran_TMMTPMmatrix.csv
+#           SQANTI_classification_filtered.csv
+# Writes: figures/01_sqanti_annotated_novel.png
+#         figures/01_sqanti_structural_categories.png
+#         figures/01_combined_sqanti_plots.png
+#
+# Overwrites its outputs every time it runs.
 
 library(tidyverse)
 library(here)
@@ -30,17 +44,17 @@ cpm_tail <- read.csv(here::here("data",
 # Function to reshape each CPM dataframe
 reshape_cpm <- function(df, tissue_name) {
   df %>%
-    # pivot only numeric CPM columns (e.g., X1FGP, X2MGP, etc.)
+    # pivot only numeric CPM columns (e.g., RFG1, RMG2, etc.)
     pivot_longer(
-      cols = matches("^X\\d"),
+      cols = matches("^R[FM][GT][0-9]$"),
       names_to = "sample",
       values_to = "CPM"
     ) %>%
-    # Extract sex info from column names (F = female, M = male)
+    # Extract sex info from column names (2nd letter: F = female, M = male)
     mutate(
       sex = case_when(
-        str_detect(sample, "F") ~ "female",
-        str_detect(sample, "M") ~ "male",
+        substr(sample, 2, 2) == "F" ~ "female",
+        substr(sample, 2, 2) == "M" ~ "male",
         TRUE ~ NA_character_
       ),
       tissue = tissue_name
@@ -133,7 +147,7 @@ ggplot(combined_summary, aes(x = type, y = prop, fill = category)) +
 # Save
 ggsave(
   filename = here::here("figures",
-                        "05_sqanti_annotated_novel.png"),
+                        "01_sqanti_annotated_novel.png"),
   width = 4,
   height = 4,
   dpi = 300
@@ -245,7 +259,7 @@ ggplot(subcategory_summary, aes(x = structural_category, y = n, fill = subcatego
 # Save
 ggsave(
   filename = here::here("figures",
-                        "05_sqanti_structural_categories.png"),
+                        "01_sqanti_structural_categories.png"),
   width = 9,
   height = 6,
   dpi = 300
@@ -416,68 +430,8 @@ patched
 # Save
 ggsave(plot = patched,
        here::here("figures",
-                  "05_combined_sqanti_plots.png"),
+                  "01_combined_sqanti_plots.png"),
   width = 14,
   height = 9,
   dpi = 300
 )
-
-################################################################################
-### (4) UPDATE GTF, TPM and COUNT MATRICES SO MATCH sqanti_w_orf
-################################################################################
-# 
-# # Load TPM matrices for gonad and tail
-# TPM_gonad <- read.csv(here::here("data",
-#                                  "isoseq",
-#                                  "10_edgeR_filterexp",
-#                                  "01_gonadtran_TMMTPMmatrix.csv")) %>%
-#   filter(transcript %in% sqanti_filtered$transcript)
-# TPM_tail <- read.csv(here::here("data",
-#                                 "isoseq",
-#                                 "10_edgeR_filterexp",
-#                                 "02_tailtran_TMMTPMmatrix.csv")) %>%
-#   filter(transcript %in% sqanti_filtered$transcript)
-# count_gonad <- read.csv(here::here("data",
-#                                    "isoseq",
-#                                    "10_edgeR_filterexp",
-#                                    "01_gonadtran_countmatrix.csv")) %>%
-#   filter(transcript %in% sqanti_filtered$transcript)
-# count_tail <- read.csv(here::here("data",
-#                                   "isoseq",
-#                                   "10_edgeR_filterexp",
-#                                   "02_tailtran_countmatrix.csv")) %>%
-#   filter(transcript %in% sqanti_filtered$transcript)
-# 
-# # Resave
-# write.csv(TPM_gonad,
-#           here::here("data","01_build_longread_transcriptome","16_edgeR_filterexp",
-#                      "01_gonadtran_TMMTPMmatrix_long_sqantifiltered.csv"),
-#           row.names = FALSE)
-# write.csv(TPM_tail,
-#           here::here("data","01_build_longread_transcriptome","16_edgeR_filterexp",
-#                      "02_tailtran_TMMTPMmatrix_long_sqantifiltered.csv"),
-#           row.names = FALSE)
-# write.csv(count_gonad,
-#           here::here("data","01_build_longread_transcriptome","16_edgeR_filterexp",
-#                      "01_gonadtran_countmatrix_long_sqantifiltered.csv"),
-#           row.names = FALSE)
-# write.csv(count_tail,
-#           here::here("data","01_build_longread_transcriptome","16_edgeR_filterexp",
-#                      "02_tailtran_countmatrix_long_sqantifiltered.csv"),
-#           row.names = FALSE)
-# 
-# # Load gtfs
-# gtf <- import(here::here("data",
-#                          "GTF",
-#                          "04_filtered_by_exp_long.gtf"))
-# 
-# # Filter gtf
-# gtf_sqanti <- gtf[gtf$transcript_id %in% sqanti_filtered$transcript]
-# 
-# # Save
-# rtracklayer::export(
-#   gtf_sqanti,
-#   here::here("data",
-#              "GTF",
-#              "05_filtered_by_exp_long_sqantifiltered.gtf")
-# )
