@@ -1,30 +1,42 @@
-# Investigate ORF status (whether isoform has a reading frame) and how
-# isoform features relate to expression
-
-### FILTER NOTICE: I REMOVE ALL GENES THAT HAVE ONLY 1 ISOFORM IN A TISSUE
-### (ONLY FOR THE FIGURE)
-
+## Step 02: Investigate ORF status (whether isoform has a reading frame) and how
+## isoform features relate to expression
+## Last modified by Linley Sherin 2026-11-03
+#
+# FILTER NOTICE: I REMOVE ALL GENES THAT HAVE ONLY 1 ISOFORM IN A TISSUE
+# (ONLY FOR THE FIGURES IN (2)-(4); THE SAVED CSVs ARE NOT FILTERED)
+#
+# Runs locally.
 # (1) Determine ORF status of all transcripts
 # (2) Plot as in benetiere (against rel abundance)
 # (3) Plot ORF_status vs. isoform absolute abundance
 # (4) Plot number of isoforms per gene, male vs. female (scatterplot)
+#
+# Usage (from the project folder):
+#   /usr/local/bin/Rscript 03_data_analysis/02_orf_status.R
+#
+# Reads:  data/01_build_longread_transcriptome/16_edgeR_filterexp/
+#           01_gonadtran_TMMTPMmatrix.csv, 02_tailtran_TMMTPMmatrix.csv
+#           SQANTI_classification_filtered.csv
+#         data/01_build_longread_transcriptome/13_transdecoder/parsed_results.csv
+#         data/01_build_longread_transcriptome/14_remove_redundancy/rosetta_stone.csv
+#         data/GTF/04_filtered_by_exp_long.gtf
+# Writes: data/03_data_analysis/02_orf_status/
+#           nmd_prediction_results.csv
+#           orf_status.csv
+#           sqanti_w_orf.csv
+#         figures/02_orfstatus_relative_facetedbytreatment.png
+#         figures/02_orfstatus_absolute_facetedbytreatment.png
+#         figures/02_num_isoforms_malevfemale.png
+#
+# Overwrites its outputs every time it runs.
 
-library(GenomicFeatures)
-library(Biostrings)
 library(dplyr)
 library(stringr)
-library(Rsamtools)
-library(GenomicRanges)
-library(GenomicAlignments)
 library(rtracklayer)
 library(PNWColors)
 library(purrr)
 library(tidyverse)
 library(here)
-library(gghalves)
-library(ggbeeswarm)
-library(forcats)
-library(broom)
 
 ################################################################################
 ### (1) Determine ORF status of all transcripts
@@ -46,17 +58,17 @@ TPM_tail <- read.csv(here::here("data",
 # Function to reshape each TPM dataframe
 reshape_TPM <- function(df, tissue_name) {
   df %>%
-    # pivot only numeric TPM columns (e.g., X1FGP, X2MGP, etc.)
+    # pivot only numeric TPM columns (e.g., RFG1, RMG2, etc.)
     pivot_longer(
-      cols = matches("^X\\d"),
+      cols = matches("^R[FM][GT][0-9]$"),
       names_to = "sample",
       values_to = "TPM"
     ) %>%
-    # Extract sex info from column names (F = female, M = male)
+    # Extract sex info from column names (2nd letter: F = female, M = male)
     mutate(
       sex = case_when(
-        str_detect(sample, "F") ~ "female",
-        str_detect(sample, "M") ~ "male",
+        substr(sample, 2, 2) == "F" ~ "female",
+        substr(sample, 2, 2) == "M" ~ "male",
         TRUE ~ NA_character_
       ),
       tissue = tissue_name
@@ -92,6 +104,10 @@ class <- read.csv(here::here("data",
 
 class <- class %>%
   filter(transcript %in% TPM_combined$transcript)
+
+# Output folder for this script
+out_dir <- here::here("data", "03_data_analysis", "02_orf_status")
+dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
 # Load ORF output from transdecoder
 ORF <- read.csv(here::here("data",
@@ -191,10 +207,7 @@ cds_nmd <- ORF %>%
 table(cds_nmd$nmd_candidate, cds_nmd$strand)
 
 # Save output
-write_csv(cds_nmd, here::here("data",
-                              "01_build_longread_transcriptome",
-                              "13_transdecoder",
-                              "nmd_prediction_results.csv"))
+write_csv(cds_nmd, file.path(out_dir, "nmd_prediction_results.csv"))
 
 #### REMINDER: this will 'predict' NMD for all orf_types, but only complete and 5prime_partials can actually be NMD
 #### internal or 3prime_partials don't have stop codons and so it's not actually possible to determine NMD
@@ -244,10 +257,7 @@ orf_status_tosave <- class_with_orf_nmd %>%
   dplyr::select(gene, transcript, orf_status, ptc_status, cds_identity, orf_identity)
 
 write.csv(orf_status_tosave,
-          here::here("data",
-                     "01_build_longread_transcriptome",
-                     "16_edgeR_filterexp",
-                     "orf_status.csv"))
+          file.path(out_dir, "orf_status.csv"))
 
 # Clean up class_with_orf_nmd
 colnames(class_with_orf_nmd)
@@ -276,10 +286,7 @@ class_with_orf_nmd <- class_with_orf_nmd %>%
                 orf_identity)
 
 write.csv(class_with_orf_nmd,
-          here::here("data",
-                     "01_build_longread_transcriptome",
-                     "16_edgeR_filterexp",
-                     "sqanti_w_orf.csv"))
+          file.path(out_dir, "sqanti_w_orf.csv"))
 
 ################################################################################
 ### (2) Plot as in Benetiere et al. (against rel abundance) - OLD WAY
@@ -300,7 +307,7 @@ TPM_combined <- TPM_combined %>%
     tissue = factor(tissue, levels = c("tail", "gonad"))
   )
 
-### FILTER NOTICE: I REMOVE ALL GENES THAT HAVE ONLY 1 ISOFORM IN A TISSUE
+### FILTER NOTICE: I REMOVE ALL GENES THAT HAVE ONLY 1 ISOFORM IN A TISSUE (APPLIES TO ALL FIGURES BELOW)
 # Remove transcripts with total relAbundance = 1 across all samples within a tissue (single isoform genes)
 TPM_combined <- TPM_combined %>%
     group_by(transcript, tissue) %>%
@@ -371,7 +378,7 @@ ggplot(bin_summary, aes(x = bin_mid, y = proportion, fill = orf_status)) +
 # Save
 ggsave(
   filename = here::here("figures",
-                        "06_orfstatus_relative_facetedbytreatment.png"),
+                        "02_orfstatus_relative_facetedbytreatment.png"),
   width = 5.5,           # width in inches
   height = 4,          # height in inches
   dpi = 300,           # resolution (use 300 for publication-quality)
@@ -444,7 +451,7 @@ ggplot(bin_summary_log, aes(x = factor(bin), y = proportion, fill = orf_status))
 # Save figure
 ggsave(
   filename = here::here("figures", 
-                        "06_orfstatus_absolute_facetedbytreatment.png"),
+                        "02_orfstatus_absolute_facetedbytreatment.png"),
   width = 5.5,
   height = 4,
   dpi = 300
@@ -497,46 +504,8 @@ ggplot(isoform_counts, aes(x = female, y = male)) +
 # Save figure
 ggsave(
   filename = here::here("figures", 
-                        "06_num_isoforms_malevfemale.png"),
+                        "02_num_isoforms_malevfemale.png"),
   width = 6,
   height = 4,
   dpi = 300
 )
-
-# ### Remove genes with only 1 isoform within a tissue
-# library(ggplot2)
-# library(dplyr)
-# library(tidyr)
-# library(scales)
-# 
-# # 1. Count and Filter
-# isoform_counts2 <- TPM_combined %>%
-#   filter(mean_isoformTPM > 0) %>%
-#   group_by(tissue, sex, gene) %>%
-#   summarise(num_isoforms = n(), .groups = "drop") %>%
-#   # Ensure genes expressed in only one sex are kept as 0 in the other
-#   complete(gene, nesting(tissue, sex), fill = list(num_isoforms = 0)) %>%
-#   # Filter: Keep only genes that have > 1 isoform TOTAL in that tissue (sum of both sexes)
-#   group_by(tissue, gene) %>%
-#   filter(sum(num_isoforms) > 1) %>% 
-#   ungroup() %>%
-#   # Pivot for plotting
-#   pivot_wider(names_from = sex, values_from = num_isoforms, values_fill = 0)
-# 
-# # 2. Set tissue order
-# isoform_counts2 <- isoform_counts2 %>%
-#   mutate(tissue = factor(tissue, levels = c("tail", "gonad")))
-# 
-# # 4. Plot
-# ggplot(isoform_counts2, aes(x = female, y = male)) +
-#   geom_point(alpha = 0.2, size = 0.5) +
-#   geom_smooth(method = "lm", se = FALSE, color = "blue") +  # trend line
-#   geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
-#   facet_wrap(~ tissue, scales = "fixed") +
-#   scale_x_continuous(limits = c(0, max_isoforms + 1), expand = c(0, 0)) +
-#   scale_y_continuous(limits = c(0, max_isoforms + 1), expand = c(0, 0)) +
-#   labs(
-#     x = "Female Isoform Count",
-#     y = "Male Isoform Count"
-#   ) +
-#   theme_minimal(base_size = 12)
