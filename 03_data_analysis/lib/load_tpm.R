@@ -12,20 +12,20 @@ tpm_gonad <- read.csv(here::here("data",
 tpm_tail <- read.csv(here::here("data",
                                 "01_build_longread_transcriptome",
                                 "16_edgeR_filterexp",
-                                "02_tailtran_TMMTPMmatrix.csv"))[-1]
+                                "02_tailtran_TMMTPMmatrix.csv"))
 
 # Reshape TPM matrices and apply them to each tissue
 reshape_tpm <- function(df, tissue_name) {
   df %>%
     pivot_longer(
-      cols = matches("^X\\d"),
+      cols = matches("^R[FM][GT][0-9]$"),  # sample columns (RFG1 etc.)
       names_to = "sample",
       values_to = "isoformTPM"
     ) %>%
     mutate(
       sex = case_when(
-        str_detect(sample, "F") ~ "female",
-        str_detect(sample, "M") ~ "male",
+        substr(sample, 2, 2) == "F" ~ "female",  # 2nd letter: F = female, M = male
+        substr(sample, 2, 2) == "M" ~ "male",
         TRUE ~ NA_character_
       ),
       tissue = tissue_name,

@@ -260,9 +260,9 @@ awk 'BEGIN{FS=","; OFS="\t"}
         # HEADER: Exactly 12 sample names.
         print "1FTP", "1MTP", "2FTP", "2MTP", "3FTP", "3MTP", "4FTP", "4MTP", "5FTP", "5MTP", "6FTP", "6MTP"
     } else {
-        # DATA: 13 columns
-        printf "%s", $1;
-        for(i=2; i<=13; i++) {
+        # DATA: ID from the second-to-last column $(NF-1), then samples 1 through 12
+        printf "%s", $(NF-1);
+        for(i=1; i<=12; i++) {
             printf "\t%s", $i;
         }
         printf "\n";

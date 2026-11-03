@@ -368,7 +368,8 @@ write.csv(tran_matrix_TPMtail,
           here::here("data",
                      "01_build_longread_transcriptome",
                      "16_edgeR_filterexp",
-                     "02_tailtran_TMMTPMmatrix.csv"))
+                     "02_tailtran_TMMTPMmatrix.csv"),
+          row.names = F)
 
 # Plot MDS (this will automatically do a log TPM transform)
 plotMDS(dge_gene_gonad,

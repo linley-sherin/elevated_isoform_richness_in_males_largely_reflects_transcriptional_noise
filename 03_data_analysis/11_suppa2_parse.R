@@ -45,7 +45,7 @@ tpm_short_gonad <- read.csv(here::here("data",
 tpm_long_tail <- read.csv(here::here("data", 
                                      "01_build_longread_transcriptome", 
                                      "16_edgeR_filterexp",
-                                     "02_tailtran_TMMTPMmatrix.csv"))[,-1]
+                                     "02_tailtran_TMMTPMmatrix.csv"))
 tpm_long_gonad <- read.csv(here::here("data", 
                                       "01_build_longread_transcriptome", 
                                       "16_edgeR_filterexp",
