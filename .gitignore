@@ -31,3 +31,4 @@ NCBI_sub/
 manuscript/
 **/tools/
 **/extras/
+.Rproj.user
