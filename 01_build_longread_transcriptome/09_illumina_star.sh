@@ -35,7 +35,7 @@ GENOME=$ROOT/data/reference/ncbi_female.fa
 OUT=$DATA/09_star
 INDEX=$OUT/index
 INDEX_THREADS=4     # speed only, does not change results
-MAP_THREADS=16      # speed only, does not change results
+MAP_THREADS=8       # speed only, does not change results
 # STAR's temp files (~70 GB per sample) go on the internal drive, not the slow USB drive
 STAR_TMP=${TMPDIR:-/tmp}/star_09
 
