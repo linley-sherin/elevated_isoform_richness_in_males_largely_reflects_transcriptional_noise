@@ -1,28 +1,42 @@
-### Create master table by calculating isoform metrics at different levels
-
+## Step 03: Create master table by calculating isoform metrics at different levels
+## Last modified by Linley Sherin 2026-11-03
+#
+# Runs locally.
 # (1) Load tpm matrices + orf_status
 # (2) Calculate mean tpm, EV (expression variance) within conditions + relAbund
 # (3) Calculate isoform richness (potential), diversity (perplexity)
 # (4) Save master table(s)
+#
+# Usage (from the project folder):
+#   /usr/local/bin/Rscript 03_data_analysis/03_mastertable.R
+#
+# Reads:  data/01_build_longread_transcriptome/16_edgeR_filterexp/
+#           01_gonadtran_TMMTPMmatrix.csv, 02_tailtran_TMMTPMmatrix.csv (via lib/load_tpm.R)
+#         data/03_data_analysis/02_orf_status/sqanti_w_orf.csv
+# Writes: data/03_data_analysis/03_mastertable/
+#           mastertable_sample.csv, mastertable_treatment.csv,
+#           mastertable_tissue.csv, mastertable_all.csv
+#
+# Overwrites its outputs every time it runs.
 
 ################################################################################
 ### (1) Load tpm matrices + orf_status
 ################################################################################
 
-source("load_tpm.R")
+source(here::here("03_data_analysis", "lib", "load_tpm.R"))
 
 # Reshape TPM matrices and apply them to each tissue
 reshape_tpm <- function(df, tissue_name) {
   df %>%
     pivot_longer(
-      cols = matches("^X\\d"),
+      cols = matches("^R[FM][GT][0-9]$"),  # sample columns (RFG1 etc.)
       names_to = "sample",
       values_to = "isoformTPM"
     ) %>%
     mutate(
       sex = case_when(
-        str_detect(sample, "F") ~ "female",
-        str_detect(sample, "M") ~ "male",
+        substr(sample, 2, 2) == "F" ~ "female",  # 2nd letter: F = female, M = male
+        substr(sample, 2, 2) == "M" ~ "male",
         TRUE ~ NA_character_
       ),
       tissue = tissue_name,
@@ -45,13 +59,19 @@ combined_samp <- bind_rows(gonad_long, tail_long)
 
 # Load sqanti output and orf status
 sqanti_orf <- read.csv(here::here("data",
-                                  "01_build_longread_transcriptome",
-                                  "16_edgeR_filterexp",
+                                  "03_data_analysis",
+                                  "02_orf_status",
                                   "sqanti_w_orf.csv"))[,-1]
 
 ################################################################################
 ### (2) Calculate mean tpm, EV (expression variance) within conditions + relAbund
 ################################################################################
+
+# Total number of samples (both tissues). Genes/isoforms filtered out of one tissue
+# in step 16 have no rows there, so for the "all" level they count as 0 TPM in
+# those samples (otherwise isoform and gene means use different sample sets and
+# ra_all can sum to >1)
+n_all <- n_distinct(combined_samp$sample)
 
 # Summarize Gene metrics independently
 gene_metrics <- combined_samp %>%
@@ -59,9 +79,9 @@ gene_metrics <- combined_samp %>%
   distinct(sample, gene, sex, tissue, geneTPM, log2_geneTPM) %>%
   group_by(gene) %>%
   mutate(
-    mean_geneTPM_all      = mean(geneTPM, na.rm = TRUE),
+    mean_geneTPM_all      = sum(geneTPM, na.rm = TRUE) / n_all,
     log2_mean_geneTPM_all = log2(mean_geneTPM_all + 1),
-    cv_geneTPM_all        = sd(log2_geneTPM, na.rm = TRUE) / mean(log2_geneTPM, na.rm = TRUE)
+    cv_geneTPM_all        = { x <- c(log2_geneTPM, rep(0, n_all - n())); sd(x) / mean(x) } # pad 0s for missing tissue
   ) %>%
   group_by(gene, tissue) %>%
   mutate(
@@ -86,9 +106,9 @@ combined_samp <- combined_samp %>%
   
   group_by(transcript) %>%
   mutate(
-    mean_isoformTPM_all      = mean(isoformTPM, na.rm = TRUE),
+    mean_isoformTPM_all      = sum(isoformTPM, na.rm = TRUE) / n_all,
     log2_mean_isoformTPM_all = log2(mean_isoformTPM_all + 1),
-    cv_isoformTPM_all        = sd(log2_isoformTPM, na.rm = TRUE) / mean(log2_isoformTPM, na.rm = TRUE)
+    cv_isoformTPM_all        = { x <- c(log2_isoformTPM, rep(0, n_all - n())); sd(x) / mean(x) } # pad 0s for missing tissue
   ) %>%
   group_by(transcript, tissue) %>%
   mutate(
@@ -628,29 +648,29 @@ mt_all <- mt_all %>%
 
 write.csv(mt_samp,
           here::here("data",
-                     "isoseq",
-                     "11_perplexity",
+                     "03_data_analysis",
+                     "03_mastertable",
                      "mastertable_sample.csv"),
           row.names = F)
 
 write.csv(mt_treat,
           here::here("data",
-                     "isoseq",
-                     "11_perplexity",
+                     "03_data_analysis",
+                     "03_mastertable",
                      "mastertable_treatment.csv"),
           row.names = F)
 
 write.csv(mt_tissue,
           here::here("data",
-                     "isoseq",
-                     "11_perplexity",
+                     "03_data_analysis",
+                     "03_mastertable",
                      "mastertable_tissue.csv"),
           row.names = F)
 
 write.csv(mt_all,
           here::here("data",
-                     "isoseq",
-                     "11_perplexity",
+                     "03_data_analysis",
+                     "03_mastertable",
                      "mastertable_all.csv"),
           row.names = F)
 
