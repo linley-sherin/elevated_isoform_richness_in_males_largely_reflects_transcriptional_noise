@@ -1,32 +1,45 @@
-# Subsample count matrixes to see whether we reached isoform saturation
-
-# Saturation curves
+## Step 06: Subsample count matrixes to see whether we reached isoform saturation
+## Last modified by Linley Sherin 2026-11-03
+#
+# Saturation curves. Read depth on the x-axis is raw sequenced reads, so the
+# curves show how much sequencing would be needed to reach saturation.
+#
+# Runs locally.
+#
+# Usage (from the project folder):
+#   /usr/local/bin/Rscript 03_data_analysis/06_saturationcurve.R
+#
+# Reads:  data/01_build_longread_transcriptome/16_edgeR_filterexp/
+#           01_gonadtran_countmatrix.csv, 02_tailtran_countmatrix.csv
+#         data/reference/metadata.csv
+# Writes: figures/06_satcurve_sample.png, 06_satcurve_sample_gene.png,
+#         figures/06_satcurve_tissue.png, 06_satcurve_all.png
+#
+# Overwrites its outputs every time it runs.
 
 library(data.table)
 library(ggplot2)
 library(tidyverse)
 library(here)
-library(GenomicRanges)
 library(dplyr)
-library(purrr)
 library(stringr)
 library(scales)
-library(colorspace)
+
+# Subsampling is random; fix the seed so the curves are the same every run
+set.seed(1)
 
 # Load data -------------------------------------------------------------------
 
-# Load TPM matrices for gonad and tail
+# Load count matrices for gonad and tail
 count_gonad <- read.csv(here::here("data",
                                  "01_build_longread_transcriptome",
                                  "16_edgeR_filterexp",
-                                 "01_gonadtran_countmatrix.csv"))[,-1] %>%
-  rename_with(.fn = ~ sub("^X", "", .), .cols = 1:14)
+                                 "01_gonadtran_countmatrix.csv"))[,-1]
 
 count_tail <- read.csv(here::here("data",
                                 "01_build_longread_transcriptome",
                                 "16_edgeR_filterexp",
-                                "02_tailtran_countmatrix.csv"))[,-1] %>%
-  rename_with(.fn = ~ sub("^X", "", .), .cols = 1:14)
+                                "02_tailtran_countmatrix.csv"))[,-1]
 
 # Combine them
 count_matrix <- full_join(count_gonad, count_tail)
@@ -64,46 +77,41 @@ custom_colors <- c(
 
 # Contains: cell, sample_id, sex, tissue, selection, read depth (from flnc.bam)
 metadata <- read.csv(here::here("data",
-                                "isoseq",
+                                "reference",
                                 "metadata.csv"))
+
+# We want to correct the read depth #, which currently represents the reads
+# quantified by kallisto (after filtering) so that it represents actual
+# sample effort (i.e. the # reads we payed for and sequenced)
+
+# We have to account for two things
+# (1) reads lost from raw -> end of pacbio workflow (7.25%)
+# (2) reads lost from pacbio workflow -> count matrix
+raw_per_flnc <- 1.0725
 
 # Calculate mapped_readdepth
 mapped_readdepth <- count_matrix %>%
   dplyr::select(-transcript, -gene) %>%
   summarise(across(everything(), sum)) %>%
-  pivot_longer(cols = everything(), names_to = "sample_id", values_to = "mapped_readdepth") %>%
-  mutate(sample_id = str_remove(sample_id, "_isoform_counts"))  # To match metadata
+  pivot_longer(cols = everything(), names_to = "sample_id", values_to = "mapped_readdepth")
 
 metadata$flnc_readdepth <- as.numeric(metadata$flnc_readdepth)
 
-# Join mapped_readdepth with metadata to calculate mapping rate
+# Join mapped_readdepth with metadata to calculate mapping rate (counted / raw reads)
 metadata <- metadata %>%
   left_join(mapped_readdepth, by = "sample_id") %>%
-  dplyr::mutate(mapping_rate = mapped_readdepth / flnc_readdepth)
+  dplyr::mutate(raw_readdepth = flnc_readdepth * raw_per_flnc,
+                mapping_rate = mapped_readdepth / raw_readdepth)
 
 # Calculate mapping rate correction across all samples ###########--------------
 
-# We want to correct the read depth #, which currently represents the reads 
-# mapped by minimap2 and quantified by bambu so that it represents actual
-# sample effort (i.e. the # reads we payed for and sequenced)
-
-# We have to account for two things
-# (1) reads lost from raw -> end of pacbio workflow (7.25%)
-# (2) reads lost from pacbio workflow -> after minimap2
-raw_reads <- 195014391 * 1.0725
-flnc_reads <- 195014391 # this is the input for minimap2
+raw_reads <- sum(metadata$raw_readdepth)
+flnc_reads <- sum(metadata$flnc_readdepth) # this is the input for minimap2
 
 setDT(count_matrix)  # Convert to data.table
 
 # Reads in count_matrix represents reads after kallisto and filtering by low TPM
 count_matrix_prune <- count_matrix[, !(names(count_matrix) %in% c("transcript", "gene")), with = FALSE]
-
-# Convert to numeric matrix
-# Identify columns whose names end with 'p'
-p_columns <- grep("P$", colnames(count_matrix), value = TRUE)
-
-# Convert these columns to numeric
-count_matrix[, (p_columns) := lapply(.SD, as.numeric), .SDcols = p_columns]
 
 # Sum all reads
 after_reads <- sum(as.matrix(count_matrix_prune), na.rm = TRUE)
@@ -165,9 +173,6 @@ for (sample in colnames(count_matrix)[1:24]) {
   saturation_dt <- rbind(saturation_dt, temp_res)
 }
 
-# Change sample id
-saturation_dt[, sample := stringr::str_remove(sample, "_transcript_counts")]
-
 # Merge saturation results with sample-specific mapping rates
 saturation_dt <- merge(
   saturation_dt,
@@ -185,12 +190,12 @@ saturation_dt[, total_reads_corrected := round(total_reads / mapping_rate)]
 # Extract groupings/treatments using regex groups
 saturation_dt <- saturation_dt %>%
   mutate(
-    # Extract with full match groups: number, sex, tissue
-    match = str_match(sample, "([0-9]+)([FM])([GT])"),
-    
-    sample_num = as.numeric(match[, 2]),  # first group
-    sex        = match[, 3],              # second group
-    tissue     = match[, 4],              # third group
+    # Extract with full match groups: sex, tissue, number (e.g. RFG1)
+    match = str_match(sample, "R([FM])([GT])([0-9]+)"),
+
+    sex        = match[, 2],              # first group
+    tissue     = match[, 3],              # second group
+    sample_num = as.numeric(match[, 4]),  # third group
     
     # Determine selection
     selection = if_else(sample_num %% 2 == 1, "up", "down"),
@@ -216,7 +221,7 @@ ggplot(saturation_dt, aes(x = total_reads_corrected, y = detected_transcripts, g
 
 # Save
 ggsave(filename = here::here("figures",
-                             "10_satcurve_sample.png"),
+                             "06_satcurve_sample.png"),
        width = 6, 
        height = 4, 
        dpi = 300)
@@ -236,7 +241,7 @@ ggplot(saturation_dt, aes(x = total_reads_corrected, y = detected_genes, group =
 
 # Save
 ggsave(filename = here::here("figures",
-                             "10_satcurve_sample_gene.png"), 
+                             "06_satcurve_sample_gene.png"), 
        width = 6, 
        height = 4, 
        dpi = 300)
@@ -270,7 +275,7 @@ ggsave(filename = here::here("figures",
 #   theme(legend.position = "right")
 # 
 # # Save
-# ggsave(filename = here::here("figures", "10_satcurve_prop_sample.png"), 
+# ggsave(filename = here::here("figures", "06_satcurve_prop_sample.png"), 
 #        width = 6, 
 #        height = 4, 
 #        dpi = 300)
@@ -288,10 +293,10 @@ sample_cols <- setdiff(colnames(count_matrix), c("transcript", "gene"))
 sample_info <- data.frame(sample = sample_cols) %>%
   mutate(
     # Extracting sample_num, sex, tissue, and selection
-    match = str_match(sample, "^([0-9]+)([FM])([A-Z]+)"),
-    sample_num = as.integer(match[, 2]),
-    sex = if_else(match[, 3] == "F", "female", "male"),
-    tissue = if_else(match[, 4] == "GP", "gonad", "tail"),
+    match = str_match(sample, "^R([FM])([GT])([0-9]+)"),
+    sample_num = as.integer(match[, 4]),
+    sex = if_else(match[, 2] == "F", "female", "male"),
+    tissue = if_else(match[, 3] == "G", "gonad", "tail"),
     selection = if_else(sample_num %% 2 == 1, "up", "down"),
     treatment = paste(sex, tissue, sep = "_")
   )
@@ -388,7 +393,7 @@ ggplot(saturation_group, aes(x = total_reads_corrected,
 
 # Save
 ggsave(filename = here::here("figures",
-                             "10_satcurve_tissue.png"),
+                             "06_satcurve_tissue.png"),
        width = 6, 
        height = 4, 
        dpi = 300)
@@ -420,7 +425,7 @@ ggsave(filename = here::here("figures",
 # 
 # # Save
 # ggsave(filename = here::here("figures",
-#                              "10_satcurve_prop_tissue.png"), 
+#                              "06_satcurve_prop_tissue.png"), 
 #        width = 6, 
 #        height = 4, 
 #        dpi = 300)
@@ -450,7 +455,7 @@ saturation_all[, detected_transcripts := sapply(total_reads, function(n_reads) {
 })]
 
 # Correct total reads for mapping rate
-saturation_all[, total_reads_corrected := round(total_reads / mapping_rate * fraction)]
+saturation_all[, total_reads_corrected := round(total_reads / mapping_rate)]  # total_reads already includes the fraction
 
 # Plot 
 ggplot(saturation_all, aes(x = total_reads_corrected, y = detected_transcripts)) +
@@ -466,7 +471,7 @@ ggplot(saturation_all, aes(x = total_reads_corrected, y = detected_transcripts))
 
 # Save
 ggsave(filename = here::here("figures",
-                             "10_satcurve_all.png"),
+                             "06_satcurve_all.png"),
        width = 6, 
        height = 4, 
        dpi = 300)
@@ -489,7 +494,7 @@ ggsave(filename = here::here("figures",
 # 
 # # Save
 # ggsave(filename = here::here("figures",
-#                              "10_satcurve_prop_all.png"),
+#                              "06_satcurve_prop_all.png"),
 #        width = 6, 
 #        height = 4, 
 #        dpi = 300)
