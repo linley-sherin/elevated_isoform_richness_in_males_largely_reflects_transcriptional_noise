@@ -504,30 +504,6 @@ cat(
   "\n"
 )
 
-# # (3) Tau vs expression
-# p_tau <- ggplot(mt_all_g, 
-#                 aes(x = log2_mean_geneTPM_all, y = tau_all)) +
-#   geom_point(color = "grey40", alpha = 0.5, size = 1) +
-#   geom_smooth(method = "lm", color = "black", se = TRUE) +
-#   stat_poly_eq(aes(label = after_stat(rr.label)), # Keeps only the R2 label
-#                formula = y ~ x,
-#                parse = TRUE,
-#                label.x = "right",  
-#                label.y = "bottom") +  
-#   scale_x_continuous(
-#     # Tell ggplot exactly where to place the ticks in log2 space
-#     breaks = log2(c(1, 100, 10000)), 
-#     # Tell ggplot how to format those back into raw numbers with commas (no decimals)
-#     labels = scales::trans_format(function(x) 2^x, scales::comma_format(accuracy = 1))
-#   ) +
-#   labs(
-#     x = "Gene expression", # Updated to reflect unlogged scale
-#     y = "Tau"
-#   ) +
-#   theme_minimal() +
-#   coord_cartesian(ylim = c(0, 1))  # limit y-axis without dropping points
-# p_tau
-
 # Save richness and diversity vs expression together
 p_expression <- p_potential + p_perplexity
 
@@ -741,29 +717,6 @@ saveRDS(p2_short, file.path(plot_dir, "figS4_pca_gene_short.rds"))
 saveRDS(p3_short, file.path(plot_dir, "figS4_pca_isoform_short.rds"))
 saveRDS(p4_gg_short, file.path(plot_dir, "figS4_heatmap_short.rds"))
 
-### PATCHWORK
-
-# Create the left-hand column and collect its legends specifically
-left_col <- (p2 / p3) + 
-  plot_layout(guides = "collect") +
-  plot_annotation(tag_levels = 'A')
-
-# Combine with p4_gg and set the relative widths
-together <- (left_col | p4_gg) + 
-  plot_layout(widths = c(1, 2)) +
-  plot_annotation(tag_levels = 'A')
-
-together
-
-# Save
-ggsave(
-  filename = here::here("figures", "05_exp_alltogether.png"),
-  plot = together,
-  width = 10,  # Increased width to give the wider p4_gg room to breathe
-  height = 7,
-  dpi = 1000
-)
-
 ################################################################################
 ### (7) Ineffective vs. effective
 ################################################################################
@@ -927,7 +880,7 @@ final_mega_figure
 
 # Save with a wider aspect ratio to accommodate the new hero panel
 ggsave(
-  here::here("figures", "05_RA_Ineffective_ManuscriptPlot.png"),
+  here::here("figures", "05_ineffective_v_effective.png"),
   final_mega_figure,
   width = 11,
   height = 9,
