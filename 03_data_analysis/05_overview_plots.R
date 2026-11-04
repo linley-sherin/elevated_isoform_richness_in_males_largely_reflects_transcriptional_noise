@@ -1,5 +1,7 @@
-# Overview plots for first part of manuscript
-
+## Step 05: Overview plots for first part of manuscript
+## Last modified by Linley Sherin 2026-11-03
+#
+# Runs locally.
 # (1) Load
 # (2) Isoform count histogram/stacked barplot
 # (3) Isoform count stacked barplot with coding potential
@@ -7,34 +9,35 @@
 # (5) Expression PCA
 # (6) Clustered heatmap based on isoform expression
 # (7) Ineffective vs. effective
+#
+# Usage (from the project folder):
+#   /usr/local/bin/Rscript 03_data_analysis/05_overview_plots.R
+#
+# Reads:  data/03_data_analysis/03_mastertable/ (via lib/load_mt.R)
+#         data/03_data_analysis/02_orf_status/sqanti_w_orf.csv
+# Writes: data/03_data_analysis/05_overview_plots/plots/fig2[BCD]_*.rds   panels for 14_assemble_figures.R
+#         figures/05_isoform_count_histogram.png      Fig 2B
+#         figures/05_relabund_histogram.png           Fig 2C
+#         figures/05_potential_histo_w_codingstatus.png   Fig 2D
+#         figures/05_expression_vs_richness_diversity.png Supp Fig S5
+#         figures/05_exp_pca.png, 05_exp_isoformheatmap.png, 05_exp_alltogether.png   Supp Fig S4
+#         figures/05_RA_Ineffective_ManuscriptPlot.png    Supp Fig S6
+#
+# Overwrites its outputs every time it runs.
 
 # --- Data Manipulation & Wrangling ---
 library(dplyr)
-library(purrr)
-library(reshape2)
-library(stringr)
 library(tidyr)
 library(tidyverse) # Includes dplyr, ggplot2, tidyr, purrr, stringr
 
 # --- Visualization & Formatting ---
-library(circlize)
-library(ComplexHeatmap)
 library(pheatmap)
 library(ggplot2)
 library(ggplotify)
-library(grid)
-library(gt)
 library(patchwork)
 library(scales)
-library(viridis)
-library(gridExtra)
 
 # --- Statistics ---
-library(emmeans)
-library(multcompView)
-library(rstatix)
-library(MASS)
-library(broom)
 library(ggpmisc)
 
 ################################################################################
@@ -42,16 +45,14 @@ library(ggpmisc)
 ################################################################################
 
 # Load mastertable
-source("load_mt.R")
-
-# Load sqanti output and orf status
-sqanti_orf <- read.csv(here::here("data",
-                                 "01_build_longread_transcriptome",
-                                 "16_edgeR_filterexp",
-                                 "sqanti_w_orf.csv"))[,-1]
+source(here::here("03_data_analysis", "lib", "load_mt.R"))
 
 # Clean up
-rm(mt_tissue, mt_samp)
+rm(mt_tissue)
+
+# Panels are also saved as R objects so 14_assemble_figures.R can build the paper figures
+plot_dir <- here::here("data", "03_data_analysis", "05_overview_plots", "plots")
+dir.create(plot_dir, recursive = TRUE, showWarnings = FALSE)
 
 ################################################################################
 ### (2) Isoform count histogram + relative abundance histogram
@@ -163,17 +164,18 @@ cat(
   "\n"
 )
 
-# # Save
-# ggsave(
-#   filename = here::here("figures", "09_isoform_count_histogram.png"),
-#   plot = iso_histogram,
-#   width = 8,
-#   height = 5,
-#   dpi = 1000
-# )
+# Save
+ggsave(
+  filename = here::here("figures", "05_isoform_count_histogram.png"),
+  plot = iso_histogram,
+  width = 8,
+  height = 5,
+  dpi = 1000
+)
+saveRDS(iso_histogram, file.path(plot_dir, "fig2B_isoform_count_histogram.rds"))
 
 # Make histogram of relative abundance
-mt_all %>%
+ra_histogram <- mt_all %>%
   ggplot(aes(x = ra_all)) +
   geom_histogram(
     aes(y = after_stat(count / sum(count))), 
@@ -205,6 +207,18 @@ mt_all %>%
     panel.grid.major = element_blank(),
     panel.grid.minor = element_blank()
   )
+
+ra_histogram
+
+# Save
+ggsave(
+  filename = here::here("figures", "05_relabund_histogram.png"),
+  plot = ra_histogram,
+  width = 8,
+  height = 5,
+  dpi = 1000
+)
+saveRDS(ra_histogram, file.path(plot_dir, "fig2C_relabund_histogram.rds"))
 
 # Count the number of rows in each relative abundance bin
 bin_counts <- mt_all %>%
@@ -323,11 +337,14 @@ level_order2 <- c(
   "Unique ORF"
 )
 
+# Set stacking order in the data (so the saved plot does not need level_order2)
+plot_data2$iso_type <- factor(plot_data2$iso_type, levels = level_order2)
+
 # Plot
 stacked_coding <- ggplot(plot_data2, 
                          aes(x = isoform_bin, 
                              y = proportion, 
-                             fill = factor(iso_type, levels = level_order2))) +
+                             fill = iso_type)) +
   geom_bar(stat = "identity", width = .9) +
   #scale_x_discrete(labels = x_labels2) +
   scale_y_continuous(labels = percent,
@@ -355,13 +372,15 @@ stacked_coding <- ggplot(plot_data2,
 
 stacked_coding
 
-# # Save
-# ggsave(
-#   filename = here::here("figures", "09_potential_histo_w_codingstatus.png"),
-#   width = 8,
-#   height = 5,
-#   dpi = 1000
-# )
+# Save
+ggsave(
+  filename = here::here("figures", "05_potential_histo_w_codingstatus.png"),
+  plot = stacked_coding,
+  width = 8,
+  height = 5,
+  dpi = 1000
+)
+saveRDS(stacked_coding, file.path(plot_dir, "fig2D_potential_codingstatus.rds"))
 
 ### Get % genes that alternatively splice
 
@@ -447,26 +466,7 @@ summary(model_potential)$r.squared
 summary(model_potential)$coefficients[2, 4]
 
 # (2) Perplexity vs expression (matched styling)
-p_perplexity <- ggplot(mt_all_g, 
-                       aes(x = log2_mean_geneTPM_all, 
-                           y = pGene_all)) +
-  geom_point(color = "grey40", alpha = 0.5, size = 1.5) +
-  geom_smooth(method = "lm", color = "black", se = TRUE) +
-  stat_poly_eq(aes(label = paste(after_stat(eq.label), 
-                                 after_stat(rr.label), 
-                                 sep = "~~~")),
-               formula = y ~ x,
-               parse = TRUE,
-               label.x = "left",  # Fixed parameter name
-               label.y = "top") +   # Fixed parameter name
-  labs(
-    x = "log2(TPM+1)",
-    y = "Effective isoforms/Gene"
-  ) +
-  theme_minimal()
-
-
-p_perplexity <- ggplot(mt_all_g, 
+p_perplexity <- ggplot(mt_all_g,
                        aes(x = log2_mean_geneTPM_all, 
                            y = pGene_all)) +
   geom_point(color = "grey40", alpha = 0.5, size = 1) +
@@ -525,35 +525,20 @@ cat(
 #   coord_cartesian(ylim = c(0, 1))  # limit y-axis without dropping points
 # p_tau
 
-### COMBINE ALL TOGETHER
+# Save richness and diversity vs expression together
+p_expression <- p_potential + p_perplexity
 
-# Combine all together
-combined_layout <- (
-  iso_histogram + stacked_coding + plot_layout(guides = "collect")
-) / 
-  (p_potential + p_perplexity + p_tau + plot_layout(ncol = 3)) +
-  plot_annotation(tag_levels = "A")  # use plot_annotation for overall labels
-
-combined_layout
-
-# # Save combined figure
-# ggsave(
-#   filename = here::here("figures", 
-#                         "09_panel1.png"),
-#   plot = combined_layout,
-#   width = 12,   # adjust width and height as needed
-#   height = 8,
-#   dpi = 1000
-# )
+ggsave(
+  filename = here::here("figures", "05_expression_vs_richness_diversity.png"),
+  plot = p_expression,
+  width = 8,
+  height = 4,
+  dpi = 1000
+)
 
 #################################################################################
 ### (5) Expression PCA
 ################################################################################
-
-mt_samp <- read.csv(here::here("data",
-                               "isoseq",
-                               "11_mastertable",
-                               "mastertable_sample.csv"))
 
 ### PCA based on gene expresseion
 gene_mat_long <- mt_samp %>%
@@ -668,7 +653,8 @@ p23
 
 # Save
 ggsave(
-  filename = here::here("figures", "09_exp_pca.png"),
+  filename = here::here("figures", "05_exp_pca.png"),
+  plot = p23,
   width = 4,
   height = 6,
   dpi = 300
@@ -683,9 +669,6 @@ isoform_mat_t <- t(isoform_mat)
 isoform_var <- apply(isoform_mat_t, 1, var)          # variance per isoform
 top_isoforms <- names(sort(isoform_var, decreasing = TRUE))[1:1000]
 isoform_mat_top <- isoform_mat_t[top_isoforms, , drop = FALSE]  # subset rows
-
-#Simplify sample names (remove X and P)
-colnames(isoform_mat_top) <- gsub("^X|P$", "", colnames(isoform_mat_top))
 
 # Column annotations for sex + tissue
 sample_info <- data.frame(
@@ -732,7 +715,7 @@ p4
 p4_gg <- as.ggplot(p4)
 
 ggsave(
-  filename = here::here("figures", "09_exp_isoformheatmap.png"),
+  filename = here::here("figures", "05_exp_isoformheatmap.png"),
   plot = p4_gg,
   width = 6.5,
   height = 8,
@@ -754,27 +737,22 @@ together <- (left_col | p4_gg) +
 together
 
 # Save
-# ggsave(
-#   filename = here::here("figures", "09_exp_alltogether.png"),
-#   plot = together,
-#   width = 10,  # Increased width to give the wider p4_gg room to breathe
-#   height = 7,
-#   dpi = 1000
-# )
+ggsave(
+  filename = here::here("figures", "05_exp_alltogether.png"),
+  plot = together,
+  width = 10,  # Increased width to give the wider p4_gg room to breathe
+  height = 7,
+  dpi = 1000
+)
 
 ################################################################################
 ### (7) Ineffective vs. effective
 ################################################################################
 
-mt_treat <- read.csv(here::here("data",
-                               "isoseq",
-                               "11_mastertable",
-                               "mastertable_treatment.csv"))
-
 # Load sqanti output and orf status
 sqanti_orf <- read.csv(here::here("data",
-                                  "01_build_longread_transcriptome",
-                                  "16_edgeR_filterexp",
+                                  "03_data_analysis",
+                                  "02_orf_status",
                                   "sqanti_w_orf.csv"))[,-1]
 
 glimpse(mt_treat)
@@ -799,21 +777,6 @@ mt_treat2 <- mt_treat %>%
                            labels = c("Effective", "Ineffective")))
 
 # Consistent Styling
-theme_analysis <- function() {
-  theme_minimal(base_size = 14) +
-    theme(
-      # White backgrounds everywhere
-      panel.background = element_rect(fill = "white", colour = NA),
-      plot.background  = element_rect(fill = "white", colour = NA),
-      # Facet strips: white with no border
-      strip.background = element_rect(fill = "grey90", colour = NA),
-      # Don't set strip text size
-      strip.text = element_text(),
-      axis.text.x = element_text(angle = 45, hjust = 1),
-      legend.position = "bottom"
-    )
-}
-
 theme_analysis <- function() {
   theme_classic() +
     theme(
@@ -943,12 +906,12 @@ final_mega_figure <- p1 + p2 + p3 + p4 +
 # Display
 final_mega_figure
 
-# # Save with a wider aspect ratio to accommodate the new hero panel
-# ggsave(
-#   here::here("figures", "09_RA_Ineffective_ManuscriptPlot.png"), 
-#   final_mega_figure, 
-#   width = 11, 
-#   height = 9, 
-#   dpi = 300
-# )
+# Save with a wider aspect ratio to accommodate the new hero panel
+ggsave(
+  here::here("figures", "05_RA_Ineffective_ManuscriptPlot.png"),
+  final_mega_figure,
+  width = 11,
+  height = 9,
+  dpi = 300
+)
 
