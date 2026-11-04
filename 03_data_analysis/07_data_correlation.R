@@ -1,15 +1,25 @@
-# Plot mapping results from kallisto after correction in edgeR for long and short
-# reads
-
+## Step 07: Plot mapping results from kallisto after correction in edgeR for long and short
+## reads
+## Last modified by Linley Sherin 2026-11-03
+#
+# Runs locally.
 # (1) Load data
 # (2) Calculate correlation between read types + plot
+#
+# Usage (from the project folder):
+#   /usr/local/bin/Rscript 03_data_analysis/07_data_correlation.R
+#
+# Reads:  data/03_data_analysis/03_mastertable/mastertable_all.csv
+#         data/02_build_shortread_transcriptome/05_edgeR/
+#           01_gonadtran_TMMTPMmatrix_short.csv, 02_tailtran_TMMTPMmatrix_short.csv
+# Writes: figures/07_data_corr.png                                Fig 1C
+#
+# Overwrites its outputs every time it runs.
 
 library(dplyr)
 library(ggplot2)
-library(ggsignif)
 library(tidyverse)
 library(tidyr)
-library(patchwork)
 library(here)
 
 ################################################################################
@@ -18,8 +28,8 @@ library(here)
 
 # Load long-read tpm
 long_read <- read.csv(here::here("data",
-                              "isoseq",
-                              "11_mastertable",
+                              "03_data_analysis",
+                              "03_mastertable",
                               "mastertable_all.csv")) %>%
   dplyr::select(gene, mean_geneTPM_all) %>%
   distinct() %>%
@@ -35,20 +45,26 @@ short_tail <- read.csv(here::here("data",
                                   "05_edgeR",
                                   "02_tailtran_TMMTPMmatrix_short.csv"))
 
+# Number of samples (both tissues)
+n_all <- ncol(short_gonad) + ncol(short_tail) - 6  # minus row name, transcript, gene in each
+
 # Put together and then calculate total gene expression
-# (Keep 0s for calculating mean, as in mastertable script for long-reads)
+# Gene TPM per sample = sum of its isoforms; mean over all samples, with 0 where
+# the gene is not expressed in a tissue (same as mean_geneTPM_all for long reads)
 short_read <- bind_rows(
-  short_gonad %>% 
-    dplyr::select(-X, -transcript) %>% 
+  short_gonad %>%
+    dplyr::select(-X, -transcript) %>%
     pivot_longer(-gene, names_to = "condition", values_to = "TPM"),
-  
-  short_tail %>% 
-    dplyr::select(-X, -transcript) %>% 
+
+  short_tail %>%
+    dplyr::select(-X, -transcript) %>%
     pivot_longer(-gene, names_to = "condition", values_to = "TPM")
 ) %>%
+  group_by(gene, condition) %>%
+  summarize(gene_tpm = sum(TPM, na.rm = TRUE), .groups = "drop") %>%
   group_by(gene) %>%
   summarize(
-    mean_expression = mean(TPM, na.rm = TRUE)
+    mean_expression = sum(gene_tpm) / n_all
   ) %>%
   dplyr::rename(short_tpm = mean_expression)
 
@@ -67,13 +83,13 @@ combined_tpm <- long_read %>%
 ################################################################################
 
 # Calculate correlation coefficients and p-value
-pearson_test <- cor.test(combined_tpm$log_long_tpm, 
-                         combined_tpm$log_short_tpm, 
+pearson_test <- cor.test(combined_tpm$log_long_tpm,
+                         combined_tpm$log_short_tpm,
                          method = "pearson")
 
 # Calculate Spearman correlation and p-value
-spearman_test <- cor.test(combined_tpm$log_long_tpm, 
-                          combined_tpm$log_short_tpm, 
+spearman_test <- cor.test(combined_tpm$log_long_tpm,
+                          combined_tpm$log_short_tpm,
                           method = "spearman")
 
 # Extract coefficients and p-values
@@ -84,14 +100,15 @@ spearman_rho <- spearman_test$estimate
 spearman_p <- spearman_test$p.value
 
 # Print results
+message(paste("Genes in both datasets:", nrow(combined_tpm)))
 message(paste("Pearson r:", round(pearson_r, 3), "| p-value:", format.pval(pearson_p, digits = 3)))
 message(paste("Spearman rho:", round(spearman_rho, 3), "| p-value:", format.pval(spearman_p, digits = 3)))
 
 # Plot using hexagonal density binning with trendlines
-ggplot(combined_tpm, aes(x = log_long_tpm, y = log_short_tpm)) +
-  geom_hex(bins = 50) +  
-  geom_abline(intercept = 0, slope = 1, color = "black", linetype = "dashed", size = 0.5) +
-  geom_smooth(method = "lm", color = "black", se = FALSE, size = 1) +
+p_corr <- ggplot(combined_tpm, aes(x = log_long_tpm, y = log_short_tpm)) +
+  geom_hex(bins = 50) +
+  geom_abline(intercept = 0, slope = 1, color = "black", linetype = "dashed", linewidth = 0.5) +
+  geom_smooth(method = "lm", color = "black", se = FALSE, linewidth = 1) +
   annotate(
     "text",
     x = Inf,
@@ -113,3 +130,9 @@ ggplot(combined_tpm, aes(x = log_long_tpm, y = log_short_tpm)) +
     y = "Short-read expression",
     fill = "Gene Count",
   )
+
+p_corr
+
+# Save
+ggsave(here::here("figures", "07_data_corr.png"),
+       plot = p_corr, width = 5, height = 4, dpi = 300)
