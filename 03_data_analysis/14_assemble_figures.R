@@ -13,7 +13,7 @@
 #   /usr/local/bin/Rscript 03_data_analysis/14_assemble_figures.R
 #
 # Reads:  data/03_data_analysis/05_overview_plots/plots/fig2[BCD]_*.rds
-#         figures/final/fig2A_JS.png
+#         figures/schematics/fig2A_JS.png
 #         figures/schematics/fig2E.png  (exported from manuscript/figures.pptx, slide 5)
 #         data/03_data_analysis/05_overview_plots/plots/figS4_*.rds
 # Writes: figures/14_fig2.png, figures/14_fig2.pdf   (approved)
@@ -63,7 +63,7 @@ tag_theme <- theme(plot.tag = element_text(size = 20, face = "plain"))
 
 fig2_dir <- here::here("data", "03_data_analysis", "05_overview_plots", "plots")
 
-fig2A <- image_panel(here::here("figures", "final", "fig2A_JS.png"))
+fig2A <- image_panel(here::here("figures", "schematics", "fig2A_JS.png"))
 fig2B <- readRDS(file.path(fig2_dir, "fig2B_isoform_count_histogram.rds"))
 fig2C <- readRDS(file.path(fig2_dir, "fig2C_relabund_histogram.rds"))
 fig2D <- readRDS(file.path(fig2_dir, "fig2D_potential_codingstatus.rds")) +
