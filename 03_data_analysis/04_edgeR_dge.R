@@ -1164,9 +1164,8 @@ p_logfc
 ggsave(here::here("figures", "04_dge_all_vs_coding_logFC.png"),
        plot = p_logfc, width = 8, height = 4, dpi = 300)
 
-# Plot: number of sex-biased genes, all vs coding only
+# Plot: number of female-biased, unbiased and male-biased genes, all vs coding only
 p_prev <- prevalence %>%
-  filter(bias != "unbiased") %>%
   ggplot(aes(x = analysis, y = n, fill = bias)) +
   geom_col(position = position_dodge(width = 0.8), width = 0.8) +
   geom_text(aes(label = scales::comma(n)),
@@ -1174,7 +1173,7 @@ p_prev <- prevalence %>%
   facet_wrap(~Tissue, scales = "free_y") +
   scale_fill_manual(values = bias_colors, name = NULL) +
   scale_y_continuous(expand = expansion(mult = c(0, 0.15))) +
-  labs(x = NULL, y = "Sex-biased genes") +
+  labs(x = NULL, y = "DGE results (genes)") +
   theme_classic() +
   theme(strip.background = element_rect(fill = "grey90", color = NA))
 
