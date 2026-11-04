@@ -1,5 +1,7 @@
-# Parse results of suppa2
-
+## Step 11: Parse results of suppa2
+## Last modified by Linley Sherin 2026-11-03
+#
+# Runs locally.
 # (1) Load TPM
 # (2) Match transcripts and venn diagram
 # (3) Check whether transcripts Short Only-reads have unique junctions
@@ -7,7 +9,20 @@
 # (5) Load and compare events discovered
 # (6) Parse SUPPA2 results
 # (7) Plot all dpsi before coloured by sig
-# (8) Stacked bar plots of events 
+# (8) Compare significant events discovered
+#
+# Significant events: p < 0.05 (SUPPA2 empirical test with gene-level
+# correction, -gc) and |dPSI| > 0.2. dPSI = male - female.
+#
+# Usage (from the project folder):
+#   /usr/local/bin/Rscript 03_data_analysis/11_suppa2_parse.R
+#
+# Reads:  data/01_build_longread_transcriptome/16_edgeR_filterexp/0[12]_*_TMMTPMmatrix.csv
+#         data/02_build_shortread_transcriptome/05_edgeR/0[12]_*_TMMTPMmatrix_short.csv
+#         data/03_data_analysis/10_match_transcripts/0_matched_ids.csv
+#         data/03_data_analysis/09_suppa2/ (events .ioe, events_summary_combined.tsv)
+#         data/GTF/04_filtered_by_exp_long.gtf, data/GTF/06_shortreadpipe_filtered_by_exp_short.gtf
+# Writes: nothing (plots and tables are shown in the session)
 
 library(multcompView)
 library(emmeans)
@@ -31,8 +46,6 @@ library(patchwork)
 ### (1) Load TPM
 ################################################################################
 
-source("load_mt.R")
-
 # Load tpm
 tpm_short_tail <- read.csv(here::here("data", 
                                       "02_build_shortread_transcriptome", 
@@ -55,17 +68,17 @@ tpm_long_gonad <- read.csv(here::here("data",
 # define a function to transform each dataset
 process_tpm <- function(df, type_val, tissue_val) {
   df %>%
-    # Convert from wide to long: move all sample columns (X1FTP, etc.) into two columns
+    # Convert from wide to long: move all sample columns (RFT1, etc.) into two columns
     pivot_longer(
-      cols = starts_with("X"), 
-      names_to = "sample_id", 
+      cols = matches("^R[FM][GT][0-9]$"),
+      names_to = "sample_id",
       values_to = "tpm"
     ) %>%
     mutate(
       data_type = type_val,
       tissue = tissue_val,
-      # Parse the sample_id (e.g., "X1FTP")
-      sex = ifelse(substr(sample_id, 3, 3) == "F", "female", "male")
+      # Parse the sample_id (e.g., "RFT1"; 2nd letter is sex)
+      sex = ifelse(substr(sample_id, 2, 2) == "F", "female", "male")
     ) %>%
     # Clean up: remove the raw sample_id if no longer needed
     dplyr::select(transcript, gene, data_type, tissue, sex, sample_id, tpm)
@@ -91,9 +104,6 @@ rm(short_tail)
 rm(long_gonad)
 rm(long_tail)
 rm(process_tpm)
-rm(mt_all)
-rm(mt_tissue)
-rm(mt_treat)
 
 ################################################################################
 ### (2) Match transcripts and venn diagram
@@ -227,7 +237,7 @@ SRT <- rtracklayer::import(here::here("data",
 # Sanity check
 cat("LRT contains", length(unique(LRT$gene_id)), "genes.\n")
 cat("LRT contains", length(unique(LRT$transcript_id)), "isoforms.\n")
-cat("LRT contains", length(unique(LRT$gene_id)), "genes.\n")
+cat("SRT contains", length(unique(SRT$gene_id)), "genes.\n")
 cat("SRT contains", length(unique(SRT$transcript_id)), "isoforms.\n")
 
 glimpse(matched_tran)
@@ -474,8 +484,8 @@ ggplot(box_df, aes(x = class, y = short_tpm, fill = class)) +
 
 # Load the IOE files (Change paths to your actual files)
 base_path <- here::here("data",
-                        "isoseq",
-                        "15_suppa2")
+                        "03_data_analysis",
+                        "09_suppa2")
 modes <- c("short", "long")
 
 # Function to load a single IOE and label it
@@ -616,7 +626,7 @@ make_individual_row <- function(data, target_event, show_x_axis = FALSE) {
       aes(label = paste0(round((count / total_event_count) * 100, 1), "%")),
       vjust = -0.5,       
       size = 3.5,         
-      color = "#2c3e50"   # Not bolded
+      color = "#2c3e50"
     ) +
     scale_fill_manual(values = c(
       "SE"    = "#94CCEC", 
@@ -678,8 +688,8 @@ final_vertical_stack
 
 # suppa2 results
 sup_sum <- read.delim2(here::here("data",
-                                  "isoseq",
-                                  "15_suppa2",
+                                  "03_data_analysis",
+                                  "09_suppa2",
                                   "events_summary_combined.tsv"))
 
 # ensure numeric types (sometimes 'nan' forces the whole column to character)
@@ -916,7 +926,7 @@ plot_data_sig_match <- significant_sup_sum %>%
     in_short & !in_long ~ "Short",
     !in_short & in_long ~ "Long"
   )) %>%
-  # NEW: Combine A3 and A5 into a unified event type prior to counting
+  # Combine A3 and A5 into a unified event type prior to counting
   mutate(event_type = case_when(
     event_type %in% c("A3", "A5") ~ "A3/A5",
     TRUE ~ event_type
@@ -959,7 +969,7 @@ make_individual_row_sig <- function(data, target_event, show_x_axis = FALSE) {
     ) +
     theme_classic() +
     theme(
-      # FIX: Force the y axis title structure to be completely empty
+      # No y axis title
       axis.title.y = element_blank(), 
       axis.text.y = element_text(size = 9),
       panel.grid.major.y = element_line(color = "grey95", linewidth = 0.5),
@@ -985,7 +995,7 @@ for (i in seq_along(target_order)) {
   current_event <- target_order[i]
   is_last <- (i == length(target_order))
   
-  # FIX: Updated to call *_sig variant function and matching data dataframe
+  # Significant-events version of the barplot function
   row_plots[[current_event]] = make_individual_row_sig(
     data = plot_data_sig_match, 
     target_event = current_event, 
@@ -1013,244 +1023,4 @@ gene_counts <- significant_sup_sum %>%
   )
 
 gene_counts
-
-################################################################################
-### (9) UpSet plots of events and sig events
-################################################################################
-
-glimpse(sup_sum_parsed)
-glimpse(significant_sup_sum)
-
-library(UpSetR)
-
-# Set event order
-event_order <- c("SE", "MX", "A3/A5", "RI")
-event_order_upset <- rev(event_order)
-
-### LONG - ALL EVENTS
-
-# Filter and combine event types
-long_all <- sup_sum_parsed %>%
-  filter(mode == "long") %>%
-  mutate(
-    event_type = if_else(event_type %in% c("A3", "A5"),
-                         "A3/A5",
-                         event_type)
-  ) %>%
-  distinct(gene, event_type) %>%
-  mutate(value = 1) %>%
-  pivot_wider(
-    names_from = event_type,
-    values_from = value,
-    values_fill = 0
-  )
-
-UpSetR::upset(
-  as.data.frame(long_all[, event_order_upset]),
-  sets = event_order_upset,
-  keep.order = TRUE,
-  order.by = "freq",
-  sets.bar.color = c(
-    "#8676BF",  # RI
-    "#9DBCB5",  # A3/A5
-    "#ECB4A0",  # MX
-    "#94CCEC"   # SE
-  )
-)
-
-### SHORT - ALL EVENTS
-
-# Filter and combine event types
-short_all <- sup_sum_parsed %>%
-  filter(mode == "short") %>%
-  mutate(
-    event_type = if_else(event_type %in% c("A3", "A5"),
-                         "A3/A5",
-                         event_type)
-  ) %>%
-  distinct(gene, event_type) %>%
-  mutate(value = 1) %>%
-  pivot_wider(
-    names_from = event_type,
-    values_from = value,
-    values_fill = 0
-  )
-
-UpSetR::upset(
-  as.data.frame(short_all[, event_order_upset]),
-  sets = event_order_upset,
-  keep.order = TRUE,
-  order.by = "freq",
-  sets.bar.color = c(
-    "#8676BF",  # RI
-    "#9DBCB5",  # A3/A5
-    "#ECB4A0",  # MX
-    "#94CCEC"   # SE
-  )
-)
-
-### LONG - ALL EVENTS
-
-# Filter and combine event types
-long_sig <- significant_sup_sum %>%
-  filter(mode == "long") %>%
-  mutate(
-    event_type = if_else(event_type %in% c("A3", "A5"),
-                         "A3/A5",
-                         event_type)
-  ) %>%
-  distinct(gene, event_type) %>%
-  mutate(value = 1) %>%
-  pivot_wider(
-    names_from = event_type,
-    values_from = value,
-    values_fill = 0
-  )
-
-UpSetR::upset(
-  as.data.frame(long_sig[, event_order_upset]),
-  sets = event_order_upset,
-  keep.order = TRUE,
-  order.by = "freq",
-  sets.bar.color = c(
-    "#8676BF",  # RI
-    "#9DBCB5",  # A3/A5
-    "#ECB4A0",  # MX
-    "#94CCEC"   # SE
-  )
-)
-
-### SHORT - ALL EVENTS
-
-# Filter and combine event types
-short_sig <- significant_sup_sum %>%
-  filter(mode == "short") %>%
-  mutate(
-    event_type = if_else(event_type %in% c("A3", "A5"),
-                         "A3/A5",
-                         event_type)
-  ) %>%
-  distinct(gene, event_type) %>%
-  mutate(value = 1) %>%
-  pivot_wider(
-    names_from = event_type,
-    values_from = value,
-    values_fill = 0
-  )
-
-UpSetR::upset(
-  as.data.frame(short_sig[, event_order_upset]),
-  sets = event_order_upset,
-  keep.order = TRUE,
-  order.by = "freq",
-  sets.bar.color = c(
-    "#8676BF",  # RI
-    "#9DBCB5",  # A3/A5
-    "#ECB4A0",  # MX
-    "#94CCEC"   # SE
-  )
-)
-
-################################################################################
-### (9) Stacked bar plot of sex bias in long-reads
-################################################################################
-
-glimpse(sup_sum_wide)
-
-# Filter and categorize the data
-plot_data <- sup_sum_wide %>%
-  # Remove rows where dPSI_long is NaN or NA
-  filter(!is.na(dPSI_long)) %>%
-  # Filter for significant events only
-  filter(sig_status != "Not Significant") %>%
-  # Create a new column for Male vs Female bias
-  mutate(bias = ifelse(dPSI_long > 0, "Female-biased", "Male-biased"))
-
-# Create the faceted stacked bar plot
-ggplot(plot_data, aes(x = bias, fill = event_type)) +
-  geom_bar(position = "stack", color = "black", size = 0.2) +
-  # Create separate plots for each tissue
-  # scales = "free_y" allows the Y-axis to adjust to the count in each tissue
-  facet_wrap(~tissue, scales = "free_y") + 
-  scale_fill_brewer(palette = "Set3") + 
-  labs(
-    title = "Sex-Biased Splicing Events by Tissue",
-    subtitle = "Significant events only (dPSI_long)",
-    x = "Sex Bias Direction",
-    y = "Number of Events",
-    fill = "Event Type"
-  ) +
-  theme_minimal() +
-  theme(
-    axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
-    strip.background = element_rect(fill = "grey90", color = NA),
-    strip.text = element_text(face = "bold")
-  )
-
-### Redo with proportion
-
-# Filter and categorize the data
-plot_data <- sup_sum_wide %>%
-  # Remove rows where dPSI_long is NaN or NA
-  filter(!is.na(dPSI_long)) %>%
-  # Filter for significant events only
-  filter(sig_status != "Not Significant") %>%
-  # Create a new column for Male vs Female bias
-  mutate(bias = ifelse(dPSI_long > 0, "Female-biased", "Male-biased"))
-
-# Create the proportional stacked bar plot
-ggplot(plot_data, aes(x = bias, fill = event_type)) +
-  # position = "fill" converts counts to proportions (0 to 1)
-  geom_bar(position = "fill", color = "black", size = 0.2) +
-  facet_wrap(~tissue) + 
-  scale_fill_brewer(palette = "Set3") + 
-  # Use scale_y_continuous to format the axis as percentages
-  scale_y_continuous(labels = scales::percent) +
-  labs(
-    title = "Proportion of Sex-Biased Splicing Events",
-    subtitle = "Significant events (dPSI_long) normalized by category",
-    x = "Sex Bias Direction",
-    y = "Percentage of Events",
-    fill = "Event Type"
-  ) +
-  theme_minimal() +
-  theme(
-    axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
-    strip.background = element_rect(fill = "grey90", color = NA),
-    strip.text = element_text(face = "bold")
-  )
-
-library(dplyr)
-library(ggplot2)
-
-# 1. Filter and categorize the data using the corrected logic
-# Added filter to keep only MX, SE, and RI event types
-plot_data <- sup_sum_wide %>%
-  filter(!is.na(dPSI_long)) %>%
-  filter(sig_status != "Not Significant") %>%
-  filter(event_type %in% c("MX", "SE", "RI")) %>% 
-  mutate(bias = ifelse(dPSI_long > 0, "Female-biased", "Male-biased"))
-
-# 2. Create the dodged bar plot
-ggplot(plot_data, aes(x = event_type, fill = bias)) +
-  # position = "dodge" places bars side-by-side
-  geom_bar(position = "dodge", color = "black", linewidth = 0.2) +
-  # Facet by tissue with free Y axes to see patterns in smaller tissues
-  facet_wrap(~tissue, scales = "free_y") + 
-  # Using distinct colors for sex-bias
-  scale_fill_manual(values = c("Female-biased" = "#e41a1c", "Male-biased" = "#377eb8")) +
-  labs(
-    title = "Comparison of Sex-Biased Splicing Events by Tissue",
-    subtitle = "Absolute counts of significant MX, SE, and RI events",
-    x = "Event Type",
-    y = "Number of Events",
-    fill = "Bias Direction"
-  ) +
-  theme_minimal() +
-  theme(
-    strip.background = element_rect(fill = "grey90", color = NA),
-    strip.text = element_text(face = "bold"),
-    axis.text.x = element_text(face = "bold"),
-    legend.position = "bottom"
-  )
 

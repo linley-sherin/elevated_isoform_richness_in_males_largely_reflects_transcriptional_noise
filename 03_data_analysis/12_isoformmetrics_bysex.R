@@ -1,5 +1,18 @@
-# Plots and stats for sex isoform comparisons
-
+## Step 12: Plots and stats for sex isoform comparisons
+## Last modified by Linley Sherin 2026-11-03
+#
+# FILTER NOTICE: I REMOVE ALL GENES NOT EXPRESSED IN BOTH SEXES WITHIN A TISSUE
+# (APPLIES TO ALL SECTIONS; MOVED TO (1) ON 2026-11-03, BEFORE IT WAS ONLY USED FROM (10) ON)
+#
+# Runs locally.
+#
+# Usage (from the project folder):
+#   /usr/local/bin/Rscript 03_data_analysis/12_isoformmetrics_bysex.R
+#
+# Reads:  data/03_data_analysis/03_mastertable/ (via lib/load_mt.R)
+#         data/03_data_analysis/04_edgeR_dge/ (via lib/load_dge.R)
+# Writes: data/03_data_analysis/12_isoformmetrics_bysex/plots/fig3*.rds, fig4*.rds (panels for 14)
+#
 # (1) Load
 
 ### ISOFORM RICHNESS
@@ -25,42 +38,44 @@
 
 # --- Data Manipulation & Wrangling ---
 library(purrr)
-library(reshape2)
 library(stringr)
-library(fgsea)
 
 # --- Visualization & Formatting ---
-library(circlize)
-library(ComplexHeatmap)
-library(pheatmap)
 library(ggplot2)
-library(ggplotify)
-library(grid)
-library(gt)
 library(patchwork)
 library(scales)
 library(viridis)
-library(gridExtra)
 library(gghalves)
-library(cowplot)
 library(ggnewscale)
 
 # --- Statistics ---
-library(emmeans)
 library(multcompView)
 library(rstatix)
-library(MASS)
 library(broom)
 
 ################################################################################
 ### (1) Load
 ################################################################################
 
+# Panels for 14_assemble_figures.R
+plot_dir <- here::here("data", "03_data_analysis", "12_isoformmetrics_bysex", "plots")
+dir.create(plot_dir, recursive = TRUE, showWarnings = FALSE)
+
 # Load edgeR results
-source("load_dge.R")
+source(here::here("03_data_analysis", "lib", "load_dge.R"))
 
 # Load master table
-source("load_mt.R")
+source(here::here("03_data_analysis", "lib", "load_mt.R"))
+
+### FILTER NOTICE: Remove any genes not expressed in both sexes (within a tissue)
+### (applies to every section below)
+mt_samp <- mt_samp %>%
+  group_by(tissue, gene) %>%
+  filter(
+    all(c("female", "male") %in%
+          sex[geneTPM > 0])
+  ) %>%
+  ungroup()
 
 # Join with edgeR results and orf_status column of sqanti_w_orf
 mt_treat <- mt_treat %>%
@@ -102,12 +117,12 @@ mt_ready <- mt_samp %>%
 
 # Split tissues safely with na.rm = TRUE
 mt_gonad <- mt_ready %>%
-  dplyr::select(gene, ends_with("GP")) %>%
-  filter(rowSums(dplyr::select(., ends_with("GP")), na.rm = TRUE) > 0)
+  dplyr::select(gene, matches("^R[FM]G")) %>%
+  filter(rowSums(dplyr::select(., matches("^R[FM]G")), na.rm = TRUE) > 0)
 
 mt_tail <- mt_ready %>%
-  dplyr::select(gene, ends_with("TP")) %>%
-  filter(rowSums(dplyr::select(., ends_with("TP")), na.rm = TRUE) > 0)
+  dplyr::select(gene, matches("^R[FM]T")) %>%
+  filter(rowSums(dplyr::select(., matches("^R[FM]T")), na.rm = TRUE) > 0)
 
 cat("Number of genes expressed in both sexes in gonad:", length(mt_gonad$gene), "\n")
 cat("Number of genes expressed in both sexes in tail:", length(mt_tail$gene), "\n")
@@ -178,9 +193,9 @@ gonad_summary_potential <- gonad_results_potential %>%
     gene_count = sum(!is.na(log_rate_ratio))
   ) %>%
   mutate(
-    mean_fold_change = exp(mean_log),
-    lower_95 = exp(mean_log - 1.96 * se_log),
-    upper_95 = exp(mean_log + 1.96 * se_log)
+    mean_fold_change = 2^mean_log,  # log_rate_ratio is log2
+    lower_95 = 2^(mean_log - 1.96 * se_log),
+    upper_95 = 2^(mean_log + 1.96 * se_log)
   )
 
 volcano_df <- gonad_results_potential %>%
@@ -247,6 +262,7 @@ p2 <- ggplot(volcano_df,
     linewidth = 0.4
   ) +
   geom_point(
+    data = data.frame(mean_log_rate = mean_log_rate),
     aes(x = mean_log_rate, y = 0),
     color = "red",
     size = 0.5
@@ -261,7 +277,9 @@ p2 <- ggplot(volcano_df,
   )
 
 # Combine
-p2 / p1 + plot_layout(heights = c(0.6, 1.7))
+volcano <- p2 / p1 + plot_layout(heights = c(0.6, 1.7))
+volcano
+saveRDS(volcano, file.path(plot_dir, "fig3A_volcano_gonad_richness.rds"))
 
 cat(
   "The mean effect size of sex (male/female) on potential in gonad is ",
@@ -300,9 +318,9 @@ tail_summary_potential <- tail_results_potential %>%
     gene_count = sum(!is.na(log_rate_ratio))
   ) %>%
   mutate(
-    mean_fold_change = exp(mean_log),
-    lower_95 = exp(mean_log - 1.96 * se_log),
-    upper_95 = exp(mean_log + 1.96 * se_log)
+    mean_fold_change = 2^mean_log,  # log_rate_ratio is log2
+    lower_95 = 2^(mean_log - 1.96 * se_log),
+    upper_95 = 2^(mean_log + 1.96 * se_log)
   )
 
 volcano_df <- tail_results_potential %>%
@@ -369,6 +387,7 @@ p2 <- ggplot(volcano_df,
     linewidth = 0.4
   ) +
   geom_point(
+    data = data.frame(mean_log_rate = mean_log_rate),
     aes(x = mean_log_rate, y = 0),
     color = "red",
     size = 0.5
@@ -383,7 +402,9 @@ p2 <- ggplot(volcano_df,
   )
 
 # Combine
-p2 / p1 + plot_layout(heights = c(0.6, 1.7))
+volcano <- p2 / p1 + plot_layout(heights = c(0.6, 1.7))
+volcano
+saveRDS(volcano, file.path(plot_dir, "fig3A_volcano_tail_richness.rds"))
 
 
 cat(
@@ -516,34 +537,8 @@ plot_df <- plot_df %>%
     )
   )
 
-# Rename samples
-sample_names <- c(
-  "X1FTP" = "RFT1",
-  "X2FTP" = "RFT2",
-  "X3FTP" = "RFT3",
-  "X4FTP" = "RFT4",
-  "X5FTP" = "RFT5",
-  "X6FTP" = "RFT6",
-  "X1FGP" = "RFG1",
-  "X2FGP" = "RFG2",
-  "X3FGP" = "RFG3",
-  "X4FGP" = "RFG4",
-  "X5FGP" = "RFG5",
-  "X6FGP" = "RFG6",
-  "X1MTP" = "RMT1",
-  "X2MTP" = "RMT2",
-  "X3MTP" = "RMT3",
-  "X4MTP" = "RMT4",
-  "X5MTP" = "RMT5",
-  "X6MTP" = "RMT6",
-  "X1MGP" = "RMG1",
-  "X2MGP" = "RMG2",
-  "X3MGP" = "RMG3",
-  "X4MGP" = "RMG4",
-  "X5MGP" = "RMG5",
-  "X6MGP" = "RMG6",
-  "None"  = ""
-)
+# Label the full analysis (no sample omitted) as ""
+sample_names <- c("None" = "")
 
 plot_df <- plot_df %>%
   mutate(
@@ -733,6 +728,7 @@ richness_replicate_plot <- ggplot(replicate_means, aes(x = sex, y = mean_richnes
     legend.title = NULL)
 
 richness_replicate_plot
+saveRDS(richness_replicate_plot, file.path(plot_dir, "fig3B_boxplot_richness.rds"))
 
 ################################################################################
 ### (5) Orf barplots and forest plots (isoform richness)
@@ -957,7 +953,7 @@ results <- results %>%
   )
 
 # Plot
-ggplot(results,
+forest_comp <- ggplot(results,
        aes(x = iso_type,
            y = estimate,
            color = direction)) +
@@ -1014,6 +1010,10 @@ ggplot(results,
     
     legend.position = "none"
   )
+
+
+forest_comp
+saveRDS(forest_comp, file.path(plot_dir, "fig3C_composition.rds"))
 
 ################################################################################
 ### (6) Make log2FC for potential vs. bias (isoform richness) GONAD ONLY
@@ -1209,6 +1209,7 @@ pot_bias_gonad <- ggplot(
   )
 
 pot_bias_gonad
+saveRDS(pot_bias_gonad, file.path(plot_dir, "fig4B_fc_bias_richness.rds"))
 
 ################################################################################
 ### (7) Box plot for isoform richness vs bias GONAD ONLY
@@ -1409,6 +1410,7 @@ richness_bias_plot_gonad <- ggplot(
   )
 
 richness_bias_plot_gonad
+saveRDS(richness_bias_plot_gonad, file.path(plot_dir, "fig4A_boxplot_bias_richness.rds"))
 
 ################################################################################
 ### (8) Isoform composition female biased vs. male biased (gonad only)
@@ -1621,7 +1623,7 @@ results_sex <- results_sex %>%
 
 
 # Plot faceted by sex
-ggplot(results_sex,
+forest_bias <- ggplot(results_sex,
        aes(x = iso_type,
            y = estimate,
            color = direction)) +
@@ -1679,6 +1681,10 @@ ggplot(results_sex,
     legend.position = "none"
   )
 
+
+forest_bias
+saveRDS(forest_bias, file.path(plot_dir, "fig4C_composition_bias.rds"))
+
 ################################################################################
 ### (9) Calculate effect size of sex for perplexity (isoform diversity)
 ################################################################################
@@ -1698,12 +1704,12 @@ mt_ready <- mt_samp %>%
 
 # Split tissues safely with na.rm = TRUE
 mt_gonad <- mt_ready %>%
-  dplyr::select(gene, ends_with("GP")) %>%
-  filter(rowSums(dplyr::select(., ends_with("GP")), na.rm = TRUE) > 0)
+  dplyr::select(gene, matches("^R[FM]G")) %>%
+  filter(rowSums(dplyr::select(., matches("^R[FM]G")), na.rm = TRUE) > 0)
 
 mt_tail <- mt_ready %>%
-  dplyr::select(gene, ends_with("TP")) %>%
-  filter(rowSums(dplyr::select(., ends_with("TP")), na.rm = TRUE) > 0)
+  dplyr::select(gene, matches("^R[FM]T")) %>%
+  filter(rowSums(dplyr::select(., matches("^R[FM]T")), na.rm = TRUE) > 0)
 
 cat("Number of genes expressed in gonad:", length(mt_gonad$gene), "\n")
 cat("Number of genes expressed in tail:", length(mt_tail$gene), "\n")
@@ -1843,6 +1849,7 @@ p2 <- ggplot(volcano_df,
     linewidth = 0.4
   ) +
   geom_point(
+    data = data.frame(mean_log_rate = mean_log_rate),
     aes(x = mean_log_rate, y = 0),
     color = "red",
     size = 0.5
@@ -1857,7 +1864,9 @@ p2 <- ggplot(volcano_df,
   )
 
 # Combine
-p2 / p1 + plot_layout(heights = c(0.6, 1.7))
+volcano <- p2 / p1 + plot_layout(heights = c(0.6, 1.7))
+volcano
+saveRDS(volcano, file.path(plot_dir, "fig3D_volcano_gonad_diversity.rds"))
 
 
 cat(
@@ -2006,6 +2015,7 @@ p2 <- ggplot(volcano_df,
     linewidth = 0.4
   ) +
   geom_point(
+    data = data.frame(mean_log_rate = mean_log_rate),
     aes(x = mean_log_rate, y = 0),
     color = "red",
     size = 0.5
@@ -2020,7 +2030,9 @@ p2 <- ggplot(volcano_df,
   )
 
 # Combine
-p2 / p1 + plot_layout(heights = c(0.6, 1.7))
+volcano <- p2 / p1 + plot_layout(heights = c(0.6, 1.7))
+volcano
+saveRDS(volcano, file.path(plot_dir, "fig3D_volcano_tail_diversity.rds"))
 
 
 cat(
@@ -2036,22 +2048,8 @@ cat(
 ### (10) Leave one out analysis diversity
 ################################################################################
 
-# Load sample level data
-mt_samp <- read.csv(here::here("data",
-                               "isoseq",
-                               "11_mastertable",
-                               "mastertable_sample.csv"))
-
+# mt_samp: genes not expressed in both sexes were removed in (1)
 glimpse(mt_samp)
-
-### FILTER NOTICE: Remove any genes not expressed in both sexes
-mt_samp <- mt_samp %>%
-  group_by(tissue, gene) %>%
-  filter(
-    all(c("female", "male") %in%
-          sex[geneTPM > 0])
-  ) %>%
-  ungroup()
 
 ### PUT BACK IN 0s FOR REPLICATES WITHOUT EXP
 # Collapse to gene level and pivot wide, sub in 0 for NA
@@ -2066,12 +2064,12 @@ mt_ready <- mt_samp %>%
 
 # Split tissues safely with na.rm = TRUE
 mt_gonad <- mt_ready %>%
-  dplyr::select(gene, ends_with("GP")) %>%
-  filter(rowSums(dplyr::select(., ends_with("GP")), na.rm = TRUE) > 0)
+  dplyr::select(gene, matches("^R[FM]G")) %>%
+  filter(rowSums(dplyr::select(., matches("^R[FM]G")), na.rm = TRUE) > 0)
 
 mt_tail <- mt_ready %>%
-  dplyr::select(gene, ends_with("TP")) %>%
-  filter(rowSums(dplyr::select(., ends_with("TP")), na.rm = TRUE) > 0)
+  dplyr::select(gene, matches("^R[FM]T")) %>%
+  filter(rowSums(dplyr::select(., matches("^R[FM]T")), na.rm = TRUE) > 0)
 
 cat("Number of genes expressed in both sexes in gonad:", length(mt_gonad$gene), "\n")
 cat("Number of genes expressed in both sexes in tail:", length(mt_tail$gene), "\n")
@@ -2188,34 +2186,8 @@ plot_df <- plot_df %>%
     )
   )
 
-# Rename samples
-sample_names <- c(
-  "X1FTP" = "RFT1",
-  "X2FTP" = "RFT2",
-  "X3FTP" = "RFT3",
-  "X4FTP" = "RFT4",
-  "X5FTP" = "RFT5",
-  "X6FTP" = "RFT6",
-  "X1FGP" = "RFG1",
-  "X2FGP" = "RFG2",
-  "X3FGP" = "RFG3",
-  "X4FGP" = "RFG4",
-  "X5FGP" = "RFG5",
-  "X6FGP" = "RFG6",
-  "X1MTP" = "RMT1",
-  "X2MTP" = "RMT2",
-  "X3MTP" = "RMT3",
-  "X4MTP" = "RMT4",
-  "X5MTP" = "RMT5",
-  "X6MTP" = "RMT6",
-  "X1MGP" = "RMG1",
-  "X2MGP" = "RMG2",
-  "X3MGP" = "RMG3",
-  "X4MGP" = "RMG4",
-  "X5MGP" = "RMG5",
-  "X6MGP" = "RMG6",
-  "None"  = ""
-)
+# Label the full analysis (no sample omitted) as ""
+sample_names <- c("None" = "")
 
 plot_df <- plot_df %>%
   mutate(
@@ -2402,6 +2374,7 @@ diversity_replicate_plot <- ggplot(replicate_means, aes(x = sex, y = mean_divers
     legend.title = NULL)
 
 diversity_replicate_plot
+saveRDS(diversity_replicate_plot, file.path(plot_dir, "fig3E_boxplot_diversity.rds"))
 
 ################################################################################
 ### (12) Orf barplots (isoform diversity)
@@ -2628,7 +2601,7 @@ results <- results %>%
   )
 
 # Plot
-ggplot(results,
+forest_comp_eff <- ggplot(results,
        aes(x = iso_type,
            y = estimate,
            color = direction)) +
@@ -2685,6 +2658,10 @@ ggplot(results,
     
     legend.position = "none"
   )
+
+
+forest_comp_eff
+saveRDS(forest_comp_eff, file.path(plot_dir, "fig3F_composition_effective.rds"))
 
 ################################################################################
 ### (13) Make log2FC for perplexity vs. bias (isoform diversity)
@@ -2884,6 +2861,7 @@ perp_bias_gonad <- ggplot(
   )
 
 perp_bias_gonad
+saveRDS(perp_bias_gonad, file.path(plot_dir, "fig4E_fc_bias_diversity.rds"))
 
 pot_bias_gonad <- pot_bias_gonad +
   theme(legend.position = "none")
@@ -3132,6 +3110,7 @@ diversity_bias_plot_gonad <- ggplot(
   )
 
 diversity_bias_plot_gonad
+saveRDS(diversity_bias_plot_gonad, file.path(plot_dir, "fig4D_boxplot_bias_diversity.rds"))
 
 
 combined_bias_gonad <- richness_bias_plot_gonad + diversity_bias_plot_gonad+
@@ -3355,7 +3334,7 @@ results_sex <- results_sex %>%
 
 
 # Plot faceted by sex
-ggplot(results_sex,
+forest_bias_eff <- ggplot(results_sex,
        aes(x = iso_type,
            y = estimate,
            color = direction)) +
@@ -3412,6 +3391,10 @@ ggplot(results_sex,
     
     legend.position = "none"
   )
+
+
+forest_bias_eff
+saveRDS(forest_bias_eff, file.path(plot_dir, "fig4F_composition_bias_effective.rds"))
 
 ################################################################################
 ### (16) Bias orfs (richness and diversity)

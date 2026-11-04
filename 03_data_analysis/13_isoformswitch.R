@@ -1,6 +1,16 @@
-### This script looks at isoforms that have different directions of sex bias
-### to get at biologically meaningful splice variants between the sexes.
-
+## Step 13: This script looks at isoforms that have different directions of sex bias
+## to get at biologically meaningful splice variants between the sexes.
+## Last modified by Linley Sherin 2026-11-03
+#
+# Runs locally.
+#
+# Usage (from the project folder):
+#   /usr/local/bin/Rscript 03_data_analysis/13_isoformswitch.R
+#
+# Reads:  data/03_data_analysis/03_mastertable/ (via lib/load_mt.R)
+#         data/03_data_analysis/04_edgeR_dge/ (via lib/load_dge.R)
+# Writes: data/03_data_analysis/13_isoformswitch/plots/fig5*.rds (panels for 14)
+#
 # (1) Load
 # (2) Find putative isoform switches
 # (3) Categorize switch type
@@ -10,14 +20,17 @@
 
 library(ggplot2)
 library(patchwork)
-library(ltc)
 
 ################################################################################
 ### (1) Load
 ################################################################################
 
-source("load_dge.R")
-source("load_mt.R")
+source(here::here("03_data_analysis", "lib", "load_dge.R"))
+source(here::here("03_data_analysis", "lib", "load_mt.R"))
+
+# Panels for 14_assemble_figures.R
+plot_dir <- here::here("data", "03_data_analysis", "13_isoformswitch", "plots")
+dir.create(plot_dir, recursive = TRUE, showWarnings = FALSE)
 
 # Clean up files you don't need
 rm(dge_gonad,
@@ -116,7 +129,7 @@ id_summary <- tibble(
     label = n_genes
   )
 
-ggplot(id_summary, aes(x = category, y = proportion)) +
+unbiased_plot <- ggplot(id_summary, aes(x = category, y = proportion)) +
   geom_col(fill = "steelblue") +
   geom_text(aes(label = label), vjust = -0.5) +
   scale_y_continuous(
@@ -128,6 +141,9 @@ ggplot(id_summary, aes(x = category, y = proportion)) +
     y = "Proportion of \nisoform-switching genes"
   ) +
   theme_classic()
+
+unbiased_plot
+saveRDS(unbiased_plot, file.path(plot_dir, "fig5B_unbiased.rds"))
 
 ### How many unbiased isoforms have orfs?
 unbiased_orf_summary <- unbiased_isoforms %>%
@@ -376,7 +392,7 @@ loss_prop <- loss_df %>%
     label = n
   )
 
-ggplot(loss_prop, aes(x = loss_direction, y = proportion)) +
+loss_plot <- ggplot(loss_prop, aes(x = loss_direction, y = proportion)) +
   geom_col(fill = "#C88E82") +
   geom_text(
     aes(label = label),
@@ -399,6 +415,9 @@ ggplot(loss_prop, aes(x = loss_direction, y = proportion)) +
       vjust = 0.5
     )
   )
+
+loss_plot
+saveRDS(loss_plot, file.path(plot_dir, "fig5C_loss.rds"))
 
 # counts
 loss_counts <- table(loss_df$loss_direction)
@@ -516,3 +535,4 @@ final_plot <- ggplot(
   )
 
 print(final_plot)
+saveRDS(final_plot, file.path(plot_dir, "fig5A_switching.rds"))

@@ -475,7 +475,7 @@ final_plot
 ggsave(
   here::here("figures", "08_null_comparison.png"),
   plot = final_plot,
-  width = 10,
-  height = 8,
+  width = 8,     # same shape and text size as Supp Fig S7 in the manuscript
+  height = 4.85,
   dpi = 600
 )
