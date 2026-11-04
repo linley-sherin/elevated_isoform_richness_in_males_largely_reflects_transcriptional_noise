@@ -1,5 +1,7 @@
-# Investigate data qualities
-
+## Step 08: Investigate data qualities
+## Last modified by Linley Sherin 2026-11-03
+#
+# Runs locally.
 # (1) Load
 # (2) Intron number distribution
 # (3) Expression distribution
@@ -8,6 +10,18 @@
 # (6) Wouter's code - null model
 # (7) Plot scatterplots
 # (8) Plot quantiles
+#
+# Usage (from the project folder):
+#   /usr/local/bin/Rscript 03_data_analysis/08_nullmodel.R
+#
+# Reads:  data/03_data_analysis/03_mastertable/mastertable_treatment.csv
+#         data/GTF/04_filtered_by_exp_long.gtf
+#         data/01_build_longread_transcriptome/16_edgeR_filterexp/
+#           01_gonadtran_countmatrix.csv, 02_tailtran_countmatrix.csv
+# Writes: data/03_data_analysis/08_nullmodel/gene_features_wouter.csv
+#         figures/08_null_comparison.png                  Supp Fig S7
+#
+# Overwrites its outputs every time it runs.
 
 library(here)
 library(rtracklayer)
@@ -16,8 +30,6 @@ library(ggplot2)
 library(ggpmisc)
 library(patchwork)
 library(furrr)
-library(GenomicRanges)
-library(tibble)
 library(scales)
 library(tidyverse)
 library(ggpubr)
@@ -28,14 +40,9 @@ library(ggpubr)
 
 # Load master table for all samples
 mt_treat <- read.csv(here::here("data",
-                                "isoseq",
-                                "11_mastertable",
+                                "03_data_analysis",
+                                "03_mastertable",
                                 "mastertable_treatment.csv"))
-
-# Load metadata
-meta <- read.csv(here::here("data",
-                            "isoseq", 
-                            "metadata.csv"))
 
 # Load long-read transcriptome
 ann_lg <- rtracklayer::import(here::here("data",
@@ -48,7 +55,7 @@ glimpse(ann_lg)
 ### (2) Intron number distribution
 ################################################################################
 
-### Longest transcript approach
+### Transcript with the most exons per gene
 
 # Look only at exons
 exons <- ann_lg[ann_lg$type == "exon"]
@@ -58,7 +65,7 @@ tx_exon <- as.data.frame(exons) |>
   group_by(gene_id, transcript_id) |>
   summarise(n_exons = n(), .groups = "drop")
 
-# Pick longest transcript per gene
+# Pick the transcript with the most exons per gene
 ref_tx <- tx_exon |>
   group_by(gene_id) |>
   slice_max(n_exons, n = 1, with_ties = FALSE) |>
@@ -111,7 +118,7 @@ means <- gene_feat %>%
   group_by(sex, tissue) %>%
   summarise(mean_expr = mean(log2_mean_geneTPM_treat),
             mean_intron = mean(n_introns),
-            .sexs = "drop")
+            .groups = "drop")
 
 # Expression distribution
 exp_plot <- ggplot(
@@ -196,9 +203,9 @@ combined_plot
 ################################################################################
 
 # Save
-write.csv(gene_feat, here::here("data", 
-                                "isoseq",
-                                "13_nullmodel_wouter",
+write.csv(gene_feat, here::here("data",
+                                "03_data_analysis",
+                                "08_nullmodel",
                                 "gene_features_wouter.csv"),
           row.names = FALSE)
 
@@ -288,6 +295,9 @@ produce_one_dataset <- function(df, M) {
 }
 
 plan(multisession, workers = 24)
+
+# Simulations are random; fix the seed so the results are the same every run
+set.seed(1)
 
 # run simulations
 sim_data <- gene_feat_grouped %>%
@@ -463,7 +473,7 @@ final_plot
 
 # Save
 ggsave(
-  here::here("figures", "12_null_comparison.png"),
+  here::here("figures", "08_null_comparison.png"),
   plot = final_plot,
   width = 10,
   height = 8,
