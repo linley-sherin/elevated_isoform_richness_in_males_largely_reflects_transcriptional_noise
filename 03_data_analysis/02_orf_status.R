@@ -172,7 +172,7 @@ get_last_junction <- function(df) {
     penult_end <- df_ordered$end[n_exons - 1]
   } else if (strand == "-") {
     df_ordered <- df %>% arrange(desc(start))
-    penult_end <- df_ordered$start[2]
+    penult_end <- df_ordered$start[n_exons - 1]  # penultimate exon (fixed 2026-11-03, was start[2])
   } else {
     return(NULL)
   }

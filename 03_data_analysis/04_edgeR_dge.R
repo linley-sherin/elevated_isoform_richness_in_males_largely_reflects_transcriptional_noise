@@ -1,7 +1,9 @@
-# Run edgeR for DGE analysis
-
-# Only running on genes expressed in both sexes
-
+## Step 04: Run edgeR for DGE analysis
+## Last modified by Linley Sherin 2026-11-03
+#
+# Only running on genes and isoforms expressed in both sexes
+#
+# Runs locally.
 # (1) Load files
 # (2) Create design matrix
 # (3) Differential Gene Expression (DGE)
@@ -10,21 +12,35 @@
 # (6) Differential Transcript Usage (aka. differential splicing; DTU)
 # (7) Venn diagram at gene level for each tissue
 # (8) Venn diagram at transcript level for each tissue
+# (9) Sex-biased expression restricted to isoforms with intact ORFs
+#
+# Usage (from the project folder):
+#   /usr/local/bin/Rscript 03_data_analysis/04_edgeR_dge.R
+#
+# Reads:  data/01_build_longread_transcriptome/16_edgeR_filterexp/
+#           01_eR_genegonad.RData, 02_eR_genetail.RData,
+#           01_eR_trangonad.RData, 02_eR_trantail.RData
+#         data/03_data_analysis/03_mastertable/ (via lib/load_mt.R)
+#         data/reference/metadata.csv
+#         data/03_data_analysis/02_orf_status/orf_status.csv
+# Writes: data/03_data_analysis/04_edgeR_dge/
+#           01_dge_gonad_long.csv, 02_dge_tail_long.csv
+#           01_dte_gonad_long.csv, 02_dte_tail_long.csv
+#           01_dtu_gonad_gene_long.csv, 02_dtu_tail_gene_long.csv
+#           01_dtu_gonad_tran_long.csv, 02_dtu_tail_tran_long.csv
+#           03_dge_all_vs_coding_long.csv, 03_die_by_orfstatus_long.csv
+#         figures/04_vennplot_gene_<tissue>_long.png
+#         figures/04_vennplot_tran_<tissue>_long.png
+#         figures/04_die_by_orfstatus.png
+#         figures/04_dge_all_vs_coding_logFC.png, 04_dge_all_vs_coding_counts.png
+#
+# Overwrites its outputs every time it runs.
 
 library(edgeR)
 library(dplyr)
 library(ggVennDiagram)
-library(VennDiagram)
 library(tidyverse)
-library(ggpointdensity)
-library(scales)
-library(dunn.test)
-library(ggsignif)
-library(brms)
-library(cmdstanr)
 library(limma)
-library(ggvenn)
-library(PNWColors)
 library(vcd)
 
 ################################################################################
@@ -50,9 +66,10 @@ load(here::here("data",
                 "02_eR_trantail.RData"))
 
 # Load master table
-source("load_mt.R")
+source(here::here("03_data_analysis", "lib", "load_mt.R"))
 
-# Get isoforms from genes expressed in both sexes
+# Get isoforms expressed in both sexes (in >=1 sample of each sex);
+# sex-specific isoforms are not tested for DTE/DTU
 tran_both_sexes <- mt_samp %>%
   filter(geneTPM > 0) %>%
   group_by(tissue, transcript, gene, sex) %>%
@@ -102,16 +119,16 @@ dge_tran_tail <- dge_tran_tail[
 # Also load metadata for batch effects
 # Contains: cell, sample_id, sex, tissue, selection, read depth (from flnc.bam)
 metadata <- read.csv(here::here("data",
-                                "isoseq",
+                                "reference",
                                 "metadata.csv"))
 
 # Your vector of all sample names
-all_samples <- c("1FGP", "1FTP", "1MGP", "1MTP",
-                 "2FGP", "2FTP", "2MGP", "2MTP",
-                 "3FGP", "3FTP", "3MGP", "3MTP",
-                 "4FGP", "4FTP", "4MGP", "4MTP",
-                 "5FGP", "5FTP", "5MGP", "5MTP",
-                 "6FGP", "6FTP", "6MGP", "6MTP")
+all_samples <- c("RFG1", "RFT1", "RMG1", "RMT1",
+                 "RFG2", "RFT2", "RMG2", "RMT2",
+                 "RFG3", "RFT3", "RMG3", "RMT3",
+                 "RFG4", "RFT4", "RMG4", "RMT4",
+                 "RFG5", "RFT5", "RMG5", "RMT5",
+                 "RFG6", "RFT6", "RMG6", "RMT6")
 
 # Combine into a metadata data frame
 sample_info <- data.frame(
@@ -147,6 +164,16 @@ sample_info_gonad <- droplevels(sample_info_gonad)
 sample_info_tail <- subset(sample_info, tissue == "Tail")
 sample_info_tail <- droplevels(sample_info_tail)
 
+# Put samples in the same order as the DGE object columns (the design rows
+# are matched to the count columns by position, so a different order would
+# silently mislabel sex)
+sample_info_gonad <- sample_info_gonad[match(colnames(dge_gene_gonad), sample_info_gonad$sample), ]
+sample_info_tail <- sample_info_tail[match(colnames(dge_gene_tail), sample_info_tail$sample), ]
+stopifnot(identical(sample_info_gonad$sample, colnames(dge_gene_gonad)),
+          identical(sample_info_gonad$sample, colnames(dge_tran_gonad)),
+          identical(sample_info_tail$sample, colnames(dge_gene_tail)),
+          identical(sample_info_tail$sample, colnames(dge_tran_tail)))
+
 # Design matrix
 # Add batch effects in order to test them within model
 design_g <- model.matrix(~ 0 + sex, data = sample_info_gonad)
@@ -157,9 +184,10 @@ colnames(design_g) <- c(
 rownames(design_g) <- sample_info_gonad$sample
 design_t <- model.matrix(~ 0 + sex, data = sample_info_tail)
 colnames(design_t) <- c(
-  "Female", 
+  "Female",
   "Male"
 )
+rownames(design_t) <- sample_info_tail$sample
 
 # Make contrast matrix
 contrast_matrix_t <- makeContrasts(
@@ -202,21 +230,15 @@ tail_test_gene <- glmTreat(fit_t,
 
 # Take a look
 summary(decideTests(gonad_test_gene))
-# 1*Female -1*Male
-# Down               3567
-# NotSig             5938
-# Up                 3703
+# -1*Female 1*Male
+# Down               3528
+# NotSig             5941
+# Up                 3668
 summary(decideTests(tail_test_gene))
-# 1*Female -1*Male
+# -1*Female 1*Male
 # Down                  8
-# NotSig            12480
+# NotSig            12471
 # Up                  195
-
-# Visualize
-plotMD(gonad_test_gene)
-abline(h = c(-1, 1), col = "blue")
-plotMD(tail_test_gene)
-abline(h = c(-1, 1), col = "blue")
 
 # Extract results
 
@@ -256,14 +278,14 @@ rm(tail_test_gene)
 # Save filtered DGE results
 write.csv(dge_gonad_results,
           here::here("data",
-                     "isoseq",
-                     "12_edgeR_dge",
+                     "03_data_analysis",
+                     "04_edgeR_dge",
                      "01_dge_gonad_long.csv"),
           row.names = F)
 write.csv(dge_tail_results,
           here::here("data",
-                     "isoseq",
-                     "12_edgeR_dge",
+                     "03_data_analysis",
+                     "04_edgeR_dge",
                      "02_dge_tail_long.csv"),
           row.names = F)
 
@@ -276,14 +298,6 @@ write.csv(dge_tail_results,
 # Sanity check
 dim(dge_tran_gonad)
 dim(dge_tran_tail)
-
-# Plot BCV (biological coefficient of variation - squareroot of dispersion) 
-# - if you were to plot for the unscaled
-# counts (before accounting for overdispersion) you will see the y-axis is higher
-bcv_g <- estimateDisp(dge_tran_gonad, design_g)
-plotBCV(bcv_g)
-bcv_t <- estimateDisp(dge_tran_tail, design_t)
-plotBCV(bcv_t)
 
 # "Note that this NB dispersion estimation step (estimateDisp) is now optional as all the NB dispersion estimates
 # will not be used further under the latest quasi-likelihood (QL) pipeline.
@@ -314,10 +328,6 @@ fit_t <- glmQLFit(dge_tran_tail,
                   design_t,
                   robust = T) 
 
-# Plot the mean-QL dispersion trend and the individual gene QL dispersion estimates
-plotQLDisp(fit_g)
-plotQLDisp(fit_t)
-
 # Test for differential transcript expression (DTE)
 
 # Use glmQLFTest to conduct genewise quasi F-tests for a given coefficient or coefficient contrast,
@@ -342,14 +352,6 @@ tail_test_transcript <- glmTreat(fit_t,
 # Uses BH method to correct.
 summary(decideTests(gonad_test_transcript))
 summary(decideTests(tail_test_transcript))
-
-# The differential expression test results can be visualized using an MD plot. The log-fold
-# change for each gene is plotted against the average abundance, i.e., logTPM in the result table
-# above. Significantly DE genes at a FDR of 5% are highlighted.
-plotMD(gonad_test_transcript)
-abline(h=c(-1,1), col="blue")
-plotMD(tail_test_transcript)
-abline(h=c(-1,1), col="blue")
 
 # Extract full DTE results 
 dte_gonad_results <- gonad_test_transcript$table
@@ -390,14 +392,14 @@ rm(tail_test_transcript)
 # Save DTE results
 write.csv(dte_gonad_results,
           here::here("data",
-                     "isoseq",
-                     "12_edgeR_dge",
+                     "03_data_analysis",
+                     "04_edgeR_dge",
                      "01_dte_gonad_long.csv"),
           row.names = F)
 write.csv(dte_tail_results,
           here::here("data",
-                     "isoseq",
-                     "12_edgeR_dge",
+                     "03_data_analysis",
+                     "04_edgeR_dge",
                      "02_dte_tail_long.csv"),
           row.names = F)
 
@@ -491,225 +493,6 @@ cat("\n--- COHEN'S KAPPA TEST (GONAD) ---\n")
 gonad_kappa <- vcd::Kappa(gonad_matrix)
 print(gonad_kappa)
 
-### Prepare for plotting
-
-# Prepare DTE data (Transcript level)
-plot_dte <- bind_rows(
-  dte_gonad_results %>% mutate(Tissue = "Gonad"),
-  dte_tail_results %>% mutate(Tissue = "Tail")
-) %>%
-  dplyr::group_by(Tissue, dte.bias.direction) %>%
-  tally() %>%
-  dplyr::rename(Bias = dte.bias.direction) %>%
-  mutate(Level = "Transcript")
-
-# Prepare DGE data (Gene level)
-plot_dge <- bind_rows(
-  dge_gonad_results %>% mutate(Tissue = "Gonad"),
-  dge_tail_results %>% mutate(Tissue = "Tail")
-) %>%
-  group_by(Tissue, dge.bias.direction) %>%
-  tally() %>%
-  dplyr::rename(Bias = dge.bias.direction) %>%
-  mutate(Level = "Gene")
-
-# Combine and set Factor Levels
-final_plot_data <- bind_rows(plot_dte, plot_dge) %>%
-  mutate(
-    Tissue = factor(Tissue, levels = c("Tail", "Gonad")),
-    Bias = factor(Bias, levels = c("female-biased", "unbiased", "male-biased")),
-    Level = factor(Level, levels = c("Gene", "Transcript"))
-  )
-
-# Relabel levels
-final_plot_data <- final_plot_data %>%
-  dplyr::mutate(
-    Level = dplyr::recode(Level,
-                          "Gene" = "Gene",
-                          "Transcript" = "Isoform")
-  )
-
-# Gene plot
-gene_df <- final_plot_data %>% filter(Level == "Gene")
-
-p_gene <- ggplot(gene_df, aes(x = Tissue, y = n, fill = Bias)) +
-  geom_bar(
-    stat = "identity",
-    position = position_dodge(width = 0.85),
-    width = 0.85,
-    color = "white",
-    linewidth = 0.3
-  ) +
-  geom_text(
-    aes(label = scales::comma(n)),
-    position = position_dodge(width = 0.85),
-    vjust = -0.5,
-    size = 3.2,
-    color = "#2c3e50"
-  ) +
-  facet_wrap(~Tissue, scales = "free_x", labeller = as_labeller(str_to_title)) +
-  scale_fill_manual(values = c(
-    "female-biased" = "#E05A4E",
-    "male-biased"   = "#08519c",
-    "unbiased"      = "#bdbdbd"
-  )) +
-  scale_y_continuous(expand = expansion(mult = c(0, 0.2))) +
-  labs(
-    x = NULL,
-    y = "Genes", 
-    title = NULL
-  ) +
-  theme_classic() +
-  theme(
-    strip.background = element_rect(fill = "grey90", color = NA),
-    strip.text = element_text(face = "plain", size = 11, color = "black"),
-    # FIX: Completely removed the bottom labels and ticks
-    axis.text.x = element_blank(),
-    axis.ticks.x = element_blank(),
-    axis.text.y = element_text(size = 9),
-    panel.grid.major.y = element_line(color = "grey95", linewidth = 0.5)
-  )
-
-# Isoform plot
-iso_df <- final_plot_data %>% filter(Level == "Isoform")
-
-p_isoform <- ggplot(iso_df, aes(x = Tissue, y = n, fill = Bias)) +
-  geom_bar(
-    stat = "identity",
-    position = position_dodge(width = 0.85),
-    width = 0.85,
-    color = "white",
-    linewidth = 0.3
-  ) +
-  geom_text(
-    aes(label = scales::comma(n)),
-    position = position_dodge(width = 0.85),
-    vjust = -0.5,
-    size = 3.2,
-    color = "#2c3e50"
-  ) +
-  facet_wrap(~Tissue, scales = "free_x", labeller = as_labeller(str_to_title)) +
-  scale_fill_manual(values = c(
-    "female-biased" = "#E05A4E",
-    "male-biased"   = "#08519c",
-    "unbiased"      = "#bdbdbd"
-  )) +
-  scale_y_continuous(expand = expansion(mult = c(0, 0.2))) +
-  labs(
-    x = NULL,
-    y = "Isoforms", 
-    title = NULL
-  ) +
-  theme_classic() +
-  theme(
-    strip.background = element_rect(fill = "grey90", color = NA),
-    strip.text = element_text(face = "plain", size = 11, color = "black"),
-    # FIX: Completely removed the bottom labels and ticks
-    axis.text.x = element_blank(),
-    axis.ticks.x = element_blank(),
-    axis.text.y = element_text(size = 9),
-    panel.grid.major.y = element_line(color = "grey95", linewidth = 0.5),
-    legend.position = "none"
-  )
-
-p_gene
-p_isoform
-
-### Try presenting it together
-
-# Prepare Gene-level classifications
-gene_class_gonad <- dge_gonad_results %>% 
-  dplyr::select(GeneID, Gene_Bias = dge.bias.direction)
-
-gene_class_tail <- dge_tail_results %>% 
-  dplyr::select(GeneID, Gene_Bias = dge.bias.direction)
-
-# Join Gene classifications to the Transcript data
-# This assigns a "Gene_Bias" label to every individual transcript
-dte_nested_gonad <- dte_gonad_results %>%
-  inner_join(gene_class_gonad, by = "GeneID") %>%
-  mutate(Tissue = "Gonad")
-
-dte_nested_tail <- dte_tail_results %>%
-  inner_join(gene_class_tail, by = "GeneID") %>%
-  mutate(Tissue = "Tail")
-
-# Combine and Plot
-plot_nested_data <- bind_rows(dte_nested_gonad, dte_nested_tail) %>%
-  mutate(
-    Tissue = factor(Tissue, levels = c("Tail", "Gonad")),
-    Gene_Bias = factor(Gene_Bias, levels = c("female-biased", "unbiased", "male-biased")),
-    dte.bias.direction = factor(dte.bias.direction, levels = c("female-biased", "unbiased", "male-biased"))
-  )
-
-# Calculate proportions
-nested_summary <- plot_nested_data %>%
-  count(Tissue, Gene_Bias, dte.bias.direction) %>%
-  group_by(Tissue, Gene_Bias) %>%
-  mutate(
-    prop = n / sum(n)
-  ) %>%
-  ungroup()
-
-# Plot proportion plot
-nested_props <- ggplot(
-  nested_summary,
-  aes(
-    x = Gene_Bias,
-    y = prop,
-    fill = dte.bias.direction
-  )
-) +
-  geom_col(
-  ) +
-  geom_text(
-    aes(label = scales::percent(prop, accuracy = 0.01)),
-    position = position_stack(vjust = 0.5),
-    size = 3
-  ) +
-  facet_wrap(~Tissue) +
-  scale_y_continuous(
-    labels = scales::percent,
-    limits = c(0, 1)
-  ) +
-  scale_fill_manual(values = c(
-    "female-biased" = "#E05A4E",
-    "male-biased" = "#08519c",
-    "unbiased" = "#bdbdbd"
-  )) +
-  labs(
-    x = "Differential gene expression",
-    y = "Isoforms",
-    fill = NULL
-  ) +
-  theme_classic() +
-  theme(
-    strip.background = element_rect(fill = "grey90", color = NA),
-    strip.text = element_text(face = "plain", size = 10),
-    axis.text.x = element_blank(),
-    axis.ticks.x = element_blank(),
-    legend.position = "none",
-    panel.spacing = unit(2, "lines")
-  )
-
-nested_props
-
-final_plot <-
-  (p_gene /
-   p_isoform /
-   nested_props) +
-  plot_layout(
-    guides = "collect"
-  ) +
-  plot_annotation(tag_levels = "A") &
-  theme(
-    legend.position = "right"
-  )
-
-final_plot
-
-nested_props
-
 ################################################################################
 ### (6) Differential Transcript Usage (aka. differential splicing; DTU)
 ################################################################################
@@ -733,29 +516,27 @@ gonad_test_splice <- diffSplice(fit_g,
                                 geneid = dge_tran_gonad$genes$GeneID,      
                                 exonid = dge_tran_gonad$genes$TranscriptID,
                                 robust = T) 
-# Total number of exons:  30844 
-# Total number of genes:  10543 
-# Number of genes with 1 exon:  2811 
-# Mean number of exons in a gene:  3 
-# Max number of exons in a gene:  50 
+# Total number of exons:  48055 
+# Total number of genes:  13137 
+# Number of genes with 1 exon:  4040 
+# Mean number of exons in a gene:  4 
+# Max number of exons in a gene:  88 
 tail_test_splice  <- diffSplice(fit_t, 
                                 contrast = contrast_matrix_t[,"Male_vs_Female"],
                                 geneid = dge_tran_tail$genes$GeneID,  
                                 exonid = dge_tran_tail$genes$TranscriptID,
                                 robust = T) 
-# Total number of exons:  25555 
-# Total number of genes:  9934 
-# Number of genes with 1 exon:  3215 
-# Mean number of exons in a gene:  3 
-# Max number of exons in a gene:  38 
+# Total number of exons:  44454 
+# Total number of genes:  12674 
+# Number of genes with 1 exon:  3971 
+# Mean number of exons in a gene:  4 
+# Max number of exons in a gene:  107 
 
 # NOTE: the max exons doesn't equal the known total max (124) because
 # some transcripts have 0 expression in one tissue entirely
 
 # Each coefficient is the difference between the log-fold-change for that isoform 
 # versus the average log-fold-change for all other isoforms for the same gene.
-summary(gonad_test_splice$coefficients)
-summary(tail_test_splice$coefficients)
 
 # Extract results with topSplice()
 
@@ -768,33 +549,27 @@ dtu_tail_transcript <- topSplice(tail_test_splice, test = "t", number = Inf)
 dtu_gonad_gene <- topSplice(gonad_test_splice, test = "F", number = Inf)
 dtu_tail_gene <- topSplice(tail_test_splice, test = "F", number = Inf)
 
-# Add significance column (FDR < 0.05 and absolute logFC >= 1)
+# Add significance column (FDR < 0.05; no logFC cut-off for DTU)
 dtu_gonad_gene$dtu.is.altspliced.gene <- ifelse(dtu_gonad_gene$FDR < 0.05, T, F)
 dtu_tail_gene$dtu.is.altspliced.gene <- ifelse(dtu_tail_gene$FDR < 0.05 , T, F)
 
 # Save
 write.csv(dtu_gonad_gene,
           here::here("data",
-                     "isoseq",
-                     "12_edgeR_dge",
+                     "03_data_analysis",
+                     "04_edgeR_dge",
                      "01_dtu_gonad_gene_long.csv"),
           row.names = F)
 write.csv(dtu_tail_gene,
           here::here("data",
-                     "isoseq",
-                     "12_edgeR_dge",
+                     "03_data_analysis",
+                     "04_edgeR_dge",
                      "02_dtu_tail_gene_long.csv"),
           row.names = F)
 
-# Add significance column (FDR < 0.05 and absolute logFC >= 1)
+# Add significance column (FDR < 0.05; no logFC cut-off for DTU)
 dtu_gonad_transcript$dtu.is.altspliced.tran <- ifelse(dtu_gonad_transcript$FDR < 0.05, T, F)
 dtu_tail_transcript$dtu.is.altspliced.tran <- ifelse(dtu_tail_transcript$FDR < 0.05 , T, F)
-
-glimpse(dtu_gonad_gene)
-table(dtu_gonad_gene$dtu.is.altspliced.gene)
-
-glimpse(dtu_tail_gene)
-table(dtu_tail_gene$dtu.is.altspliced.gene)
 
 # Clean up
 rm(dge_tran_gonad)
@@ -809,14 +584,14 @@ rm(design_t)
 # Save DTU results
 write.csv(dtu_gonad_transcript,
           here::here("data",
-                     "isoseq",
-                     "12_edgeR_dge",
+                     "03_data_analysis",
+                     "04_edgeR_dge",
                      "01_dtu_gonad_tran_long.csv"),
           row.names = F)
 write.csv(dtu_tail_transcript,
           here::here("data",
-                     "isoseq",
-                     "12_edgeR_dge",
+                     "03_data_analysis",
+                     "04_edgeR_dge",
                      "02_dtu_tail_tran_long.csv"),
           row.names = F)
 
@@ -865,8 +640,8 @@ datasets <- unique(combined_df_gene$dataset)
 
 # Define colors for regions
 region_colors <- c(
-  "1"   = "#DBCB9A",  # DTU only
-  "2"   = "#ECB4A0",  # DGE only
+  "1"   = "#DBCB9A",  # DTU only (set 1 = DTU)
+  "2"   = "#ECB4A0",  # DGE only (set 2 = DGE)
   "1/2" = "#D4AE76"   # DGE & DTU
 )
 
@@ -878,8 +653,8 @@ for (dataset_name in datasets) {
   
   # Create gene sets directly from logical columns
   gene_sets <- list(
-    DTU = current_data$GeneID[current_data$dtu.is.altspliced.gene],
-    DGE = current_data$GeneID[current_data$dge.is.biased]
+    DTU = current_data$GeneID[current_data$dtu.is.altspliced.gene %in% TRUE],
+    DGE = current_data$GeneID[current_data$dge.is.biased %in% TRUE]
   )
   
   # Create the Venn object
@@ -950,7 +725,7 @@ for (dataset_name in datasets) {
     )
   
   # Save plot
-  plot_filename <- paste0("08_vennplot_gene_", dataset_name, "_long.png")
+  plot_filename <- paste0("04_vennplot_gene_", dataset_name, "_long.png")
   ggsave(here::here("figures", plot_filename), plot = plot_obj, width = 4, height = 6, dpi = 300)
   
   message(paste("Plot saved for", dataset_name))
@@ -998,8 +773,8 @@ datasets <- unique(combined_df_tran$dataset)
 
 # Define colors for regions
 region_colors <- c(
-  "1"   = "#DBCB9A",  # DTU only
-  "2"   = "#CAD4C9",  # DTE only
+  "1"   = "#DBCB9A",  # DTE only (set 1 = DTE)
+  "2"   = "#CAD4C9",  # DTU only (set 2 = DTU)
   "1/2" = "#D2CFB2"   # DTE & DTU
 )
 
@@ -1011,8 +786,8 @@ for (dataset_name in datasets) {
   
   # Create gene sets directly from logical columns
   gene_sets <- list(
-    DTE = current_data$TranscriptID[current_data$dte.is.biased],
-    DTU = current_data$TranscriptID[current_data$dtu.is.altspliced.tran]
+    DTE = current_data$TranscriptID[current_data$dte.is.biased %in% TRUE],
+    DTU = current_data$TranscriptID[current_data$dtu.is.altspliced.tran %in% TRUE]
   )
   
   # Create the Venn object
@@ -1083,10 +858,327 @@ for (dataset_name in datasets) {
     )
   
   # Save plot
-  plot_filename <- paste0("08_vennplot_tran_", dataset_name, "_long.png")
+  plot_filename <- paste0("04_vennplot_tran_", dataset_name, "_long.png")
   ggsave(here::here("figures", plot_filename), plot = plot_obj, width = 4, height = 6, dpi = 300)
   
   message(paste("Plot saved for", dataset_name))
 }
 
+################################################################################
+### (9) Sex-biased expression restricted to isoforms with intact ORFs
+################################################################################
 
+# Do isoforms without intact ORFs (premature stop/NMD,
+# retained intron, non-coding) inflate estimates of sex-biased expression?
+# (A) Proportion of sex-biased isoforms (DIE) by ORF status
+# (B) Rerun DGE with gene counts from coding isoforms only and compare
+#      with DGE from all isoforms (prevalence and magnitude of sex bias)
+
+# Intact ORF = ptc_status "coding" (complete ORF, no NMD signal, no retained intron)
+orf_status <- read.csv(here::here("data",
+                                  "03_data_analysis",
+                                  "02_orf_status",
+                                  "orf_status.csv"))[,-1]
+
+coding_tx <- orf_status$transcript[orf_status$ptc_status == "coding"]
+
+# Colours used throughout
+bias_colors <- c(
+  "female-biased" = "#E05A4E",
+  "unbiased"      = "#bdbdbd",
+  "male-biased"   = "#08519c"
+)
+
+### (A) Proportion of sex-biased isoforms by ORF status
+
+die_orf <- bind_rows(
+  dte_gonad_results %>% mutate(Tissue = "Gonad"),
+  dte_tail_results %>% mutate(Tissue = "Tail")
+) %>%
+  left_join(dplyr::select(orf_status, transcript, ptc_status),
+            by = c("TranscriptID" = "transcript")) %>%
+  mutate(
+    ptc_status = recode(ptc_status,
+                        "coding" = "Coding",
+                        "nmd" = "Premature STOP",
+                        "intron_retention" = "Retained intron",
+                        "non-coding" = "Non-coding"),
+    ptc_status = factor(ptc_status, levels = c("Coding", "Premature STOP",
+                                               "Retained intron", "Non-coding")),
+    Tissue = factor(Tissue, levels = c("Tail", "Gonad")),
+    dte.bias.direction = factor(dte.bias.direction, levels = names(bias_colors))
+  )
+
+# Sanity check: every tested isoform should have an ORF status
+cat("Isoforms without ORF status:", sum(is.na(die_orf$ptc_status)), "\n")
+
+die_orf_summary <- die_orf %>%
+  count(Tissue, ptc_status, dte.bias.direction, .drop = FALSE) %>%
+  group_by(Tissue, ptc_status) %>%
+  mutate(n_isoforms = sum(n),
+         prop = n / n_isoforms) %>%
+  ungroup()
+
+print(die_orf_summary %>% filter(dte.bias.direction != "unbiased"), n = Inf)
+
+# Are isoforms without intact ORFs more often sex-biased than coding ones?
+for (t in levels(die_orf$Tissue)) {
+  x <- die_orf %>% filter(Tissue == t)
+  cat("\n---", t, ": sex-biased (DIE) vs intact ORF ---\n")
+  print(chisq.test(table(intact_orf = x$ptc_status == "Coding",
+                         biased = x$dte.is.biased)))
+}
+
+# Plot: % female-biased, unbiased and male-biased isoforms per ORF status.
+# Number of isoforms tested is shown under each category.
+die_orf_plot <- die_orf_summary %>%
+  mutate(category = paste0(sub(" ", "\n", ptc_status), "\n(n = ", scales::comma(n_isoforms), ")"),
+         category = factor(category, levels = unique(category[order(ptc_status)])),
+         label = ifelse(prop < 0.01,
+                        scales::percent(prop, accuracy = 0.01),
+                        scales::percent(prop, accuracy = 0.1)))
+
+p_die_orf <- ggplot(die_orf_plot,
+                    aes(x = category, y = prop, fill = dte.bias.direction)) +
+  geom_col(position = position_dodge(width = 0.8), width = 0.8) +
+  geom_text(aes(label = label),
+            position = position_dodge(width = 0.8), vjust = -0.4, size = 2.6) +
+  facet_wrap(~Tissue, scales = "free") +
+  scale_fill_manual(values = bias_colors, name = NULL) +
+  scale_y_continuous(labels = scales::percent, expand = expansion(mult = c(0, 0.15))) +
+  labs(x = NULL, y = "DIE results (% of isoforms)") +
+  theme_classic() +
+  theme(strip.background = element_rect(fill = "grey90", color = NA))
+
+p_die_orf
+
+ggsave(here::here("figures", "04_die_by_orfstatus.png"),
+       plot = p_die_orf, width = 9, height = 4.5, dpi = 300)
+
+### (B) DGE with coding isoforms only vs. all isoforms
+
+# Reload transcript-level DGE objects (unfiltered; removed after DTU above).
+# These contain every isoform of the genes kept in step 16, so summing them
+# gives the same gene counts used for the original DGE.
+load(here::here("data",
+                "01_build_longread_transcriptome",
+                "16_edgeR_filterexp",
+                "01_eR_trangonad.RData"))
+load(here::here("data",
+                "01_build_longread_transcriptome",
+                "16_edgeR_filterexp",
+                "02_eR_trantail.RData"))
+
+# Same expression filter as step 16: TPM > 1 in >= 3 samples of a sex
+# and total TPM > 1
+filter_by_treatment <- function(dge_obj, TPM_cutoff = 1, min_samples = 3, total_cutoff = 1) {
+  TPM_matrix <- cpm(dge_obj)
+  keep_by_group <- rep(FALSE, nrow(TPM_matrix))
+  for (grp in unique(dge_obj$samples$treatment)) {
+    idx <- which(dge_obj$samples$treatment == grp)
+    keep_by_group <- keep_by_group | rowSums(TPM_matrix[, idx, drop = FALSE] > TPM_cutoff) >= min_samples
+  }
+  keep_by_group & rowSums(TPM_matrix) > total_cutoff
+}
+
+# Sum isoform counts to genes (only isoforms in keep_tx), normalise, and run
+# the same DGE as section (3) on the genes in genes_tested
+run_dge <- function(dge_tran, keep_tx, genes_tested, apply_filter) {
+  keep <- rownames(dge_tran) %in% keep_tx
+  gene_counts <- rowsum(dge_tran$counts[keep, , drop = FALSE],
+                        group = dge_tran$genes$GeneID[keep])
+  dge <- DGEList(counts = gene_counts,
+                 samples = dge_tran$samples[, c("sample", "sex", "tissue", "treatment")])
+  dge$genes <- data.frame(GeneID = rownames(dge), row.names = rownames(dge))
+  dge <- dge[rowSums(dge$counts) > 0, , keep.lib.sizes = FALSE]
+  if (apply_filter) dge <- dge[filter_by_treatment(dge), , keep.lib.sizes = FALSE]
+  dge <- calcNormFactors(dge)
+  # Test only the genes from the original DGE (lib sizes kept from all genes, as in (1))
+  dge <- dge[rownames(dge) %in% genes_tested, ]
+
+  design <- model.matrix(~ 0 + sex, data = dge$samples)
+  colnames(design) <- c("Female", "Male")
+  contrast <- makeContrasts(Male_vs_Female = Male - Female, levels = colnames(design))
+
+  dge <- estimateDisp(dge, design)
+  fit <- glmQLFit(dge, design)
+  test <- glmTreat(fit, contrast = contrast[, "Male_vs_Female"], lfc = 1)
+  res <- edgeR::topTags(test, n = Inf)$table
+
+  # Same bias calls as section (3)
+  res$dge.is.biased <- res$FDR < 0.05 & abs(res$logFC) >= 1
+  res$dge.bias.direction <- "unbiased"
+  res$dge.bias.direction[res$dge.is.biased & res$logFC > 1] <- "male-biased"
+  res$dge.bias.direction[res$dge.is.biased & res$logFC < -1] <- "female-biased"
+  res
+}
+
+# Check: all isoforms should reproduce the original DGE
+dge_gonad_check <- run_dge(dge_tran_gonad, rownames(dge_tran_gonad), dge_gonad_results$GeneID, apply_filter = FALSE)
+dge_tail_check <- run_dge(dge_tran_tail, rownames(dge_tran_tail), dge_tail_results$GeneID, apply_filter = FALSE)
+cat("Gonad, all isoforms rebuilt:\n"); print(table(dge_gonad_check$dge.bias.direction))
+cat("Tail, all isoforms rebuilt:\n"); print(table(dge_tail_check$dge.bias.direction))
+
+# Coding isoforms only (genes need >= 1 coding isoform and must pass the
+# expression filter on coding counts alone)
+dge_gonad_coding <- run_dge(dge_tran_gonad, coding_tx, dge_gonad_results$GeneID, apply_filter = TRUE)
+dge_tail_coding <- run_dge(dge_tran_tail, coding_tx, dge_tail_results$GeneID, apply_filter = TRUE)
+
+# Share of each gene's counts that comes from coding isoforms, per sex
+prop_coding <- function(dge_tran) {
+  is_coding <- rownames(dge_tran) %in% coding_tx
+  by_sex <- lapply(split(seq_len(ncol(dge_tran)), dge_tran$samples$sex), function(idx) {
+    all_counts <- rowsum(rowSums(dge_tran$counts[, idx, drop = FALSE]), dge_tran$genes$GeneID)
+    coding_counts <- rowsum(rowSums(dge_tran$counts[is_coding, idx, drop = FALSE]),
+                            dge_tran$genes$GeneID[is_coding])
+    out <- setNames(rep(0, nrow(all_counts)), rownames(all_counts))
+    out[rownames(coding_counts)] <- coding_counts[, 1]
+    out / all_counts[, 1]
+  })
+  data.frame(GeneID = names(by_sex$Female),
+             prop_coding_female = by_sex$Female,
+             prop_coding_male = by_sex$Male[names(by_sex$Female)])
+}
+
+# Join all-isoform and coding-only results
+compare_dge <- function(all_res, coding_res, dge_tran, tissue) {
+  all_res %>%
+    dplyr::select(GeneID, logFC_all = logFC, FDR_all = FDR, bias_all = dge.bias.direction) %>%
+    left_join(coding_res %>%
+                dplyr::select(GeneID, logFC_coding = logFC, FDR_coding = FDR,
+                              bias_coding = dge.bias.direction),
+              by = "GeneID") %>%
+    left_join(prop_coding(dge_tran), by = "GeneID") %>%
+    mutate(Tissue = tissue,
+           tested_coding = !is.na(bias_coding))
+}
+
+dge_compare <- bind_rows(
+  compare_dge(dge_gonad_results, dge_gonad_coding, dge_tran_gonad, "Gonad"),
+  compare_dge(dge_tail_results, dge_tail_coding, dge_tran_tail, "Tail")
+) %>%
+  mutate(Tissue = factor(Tissue, levels = c("Tail", "Gonad")),
+         bias_all = factor(bias_all, levels = names(bias_colors)),
+         bias_coding = factor(bias_coding, levels = names(bias_colors)))
+
+# Genes that could not be tested with coding isoforms only
+cat("\nGenes not tested with coding isoforms only (no coding isoform or below filter):\n")
+print(dge_compare %>% count(Tissue, bias_all, tested_coding) %>% filter(!tested_coding))
+
+# Prevalence: % sex-biased genes, on genes tested both ways
+dge_shared <- dge_compare %>% filter(tested_coding)
+
+prevalence <- dge_shared %>%
+  pivot_longer(c(bias_all, bias_coding), names_to = "analysis", values_to = "bias") %>%
+  mutate(analysis = recode(analysis, "bias_all" = "All isoforms",
+                           "bias_coding" = "Coding isoforms only")) %>%
+  count(Tissue, analysis, bias, .drop = FALSE) %>%
+  group_by(Tissue, analysis) %>%
+  mutate(prop = n / sum(n)) %>%
+  ungroup()
+
+print(prevalence, n = Inf)
+
+# Which genes change category (rows = all isoforms, columns = coding only)
+for (t in levels(dge_shared$Tissue)) {
+  x <- dge_shared %>% filter(Tissue == t)
+  cat("\n---", t, ": DGE all isoforms (rows) vs coding only (columns) ---\n")
+  tab <- table(all = x$bias_all, coding = x$bias_coding)
+  print(tab)
+  print(round(prop.table(tab, margin = 1) * 100, 2))
+}
+
+# Magnitude: |logFC| all vs coding only
+magnitude <- dge_shared %>%
+  group_by(Tissue) %>%
+  summarise(
+    n_genes = n(),
+    r_logFC = cor(logFC_all, logFC_coding),
+    median_abs_logFC_all = median(abs(logFC_all)),
+    median_abs_logFC_coding = median(abs(logFC_coding)),
+    wilcox_p = wilcox.test(abs(logFC_coding), abs(logFC_all), paired = TRUE)$p.value,
+    .groups = "drop"
+  )
+print(magnitude)
+
+# Same for genes sex-biased with all isoforms
+magnitude_biased <- dge_shared %>%
+  filter(bias_all != "unbiased") %>%
+  group_by(Tissue, bias_all) %>%
+  summarise(
+    n_genes = n(),
+    median_abs_logFC_all = median(abs(logFC_all)),
+    median_abs_logFC_coding = median(abs(logFC_coding)),
+    median_prop_coding_female = median(prop_coding_female),
+    median_prop_coding_male = median(prop_coding_male),
+    .groups = "drop"
+  )
+print(magnitude_biased)
+
+# Save
+write.csv(dge_compare,
+          here::here("data",
+                     "03_data_analysis",
+                     "04_edgeR_dge",
+                     "03_dge_all_vs_coding_long.csv"),
+          row.names = F)
+write.csv(die_orf_summary,
+          here::here("data",
+                     "03_data_analysis",
+                     "04_edgeR_dge",
+                     "03_die_by_orfstatus_long.csv"),
+          row.names = F)
+
+# Plot: logFC with all isoforms vs coding isoforms only
+logfc_data <- dge_shared %>%
+  mutate(change = case_when(
+    bias_all == bias_coding ~ "Same",
+    bias_all == "unbiased" ~ "Biased only with coding",
+    bias_coding == "unbiased" ~ "Biased only with all isoforms",
+    TRUE ~ "Changed direction"
+  ),
+  change = factor(change, levels = c("Same", "Biased only with all isoforms",
+                                     "Biased only with coding", "Changed direction"))) %>%
+  arrange(change)  # draw "Same" first so the changed genes sit on top
+
+change_colors <- c("Same" = "grey75",
+                   "Biased only with all isoforms" = "#E69F00",
+                   "Biased only with coding" = "#009E73",
+                   "Changed direction" = "black")
+
+p_logfc <- ggplot(logfc_data, aes(x = logFC_all, y = logFC_coding, color = change)) +
+  geom_point(size = 0.9, alpha = 0.5) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  geom_hline(yintercept = c(-1, 1), color = "grey60", linewidth = 0.3) +
+  geom_vline(xintercept = c(-1, 1), color = "grey60", linewidth = 0.3) +
+  facet_wrap(~Tissue) +
+  scale_color_manual(values = change_colors, name = NULL, drop = FALSE) +
+  guides(color = guide_legend(override.aes = list(size = 2.5, alpha = 1))) +
+  labs(x = "Male:female log2FC (all isoforms)",
+       y = "Male:female log2FC (coding isoforms only)") +
+  theme_classic() +
+  theme(strip.background = element_rect(fill = "grey90", color = NA))
+
+p_logfc
+
+ggsave(here::here("figures", "04_dge_all_vs_coding_logFC.png"),
+       plot = p_logfc, width = 8, height = 4, dpi = 300)
+
+# Plot: number of sex-biased genes, all vs coding only
+p_prev <- prevalence %>%
+  filter(bias != "unbiased") %>%
+  ggplot(aes(x = analysis, y = n, fill = bias)) +
+  geom_col(position = position_dodge(width = 0.8), width = 0.8) +
+  geom_text(aes(label = scales::comma(n)),
+            position = position_dodge(width = 0.8), vjust = -0.4, size = 3) +
+  facet_wrap(~Tissue, scales = "free_y") +
+  scale_fill_manual(values = bias_colors, name = NULL) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.15))) +
+  labs(x = NULL, y = "Sex-biased genes") +
+  theme_classic() +
+  theme(strip.background = element_rect(fill = "grey90", color = NA))
+
+p_prev
+
+ggsave(here::here("figures", "04_dge_all_vs_coding_counts.png"),
+       plot = p_prev, width = 7, height = 4, dpi = 300)
