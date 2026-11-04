@@ -30,6 +30,8 @@ sampling/
 NCBI_sub/
 manuscript/
 figures/old/
+figures/test/
+Rplots.pdf
 **/tools/
 **/extras/
 .Rproj.user
