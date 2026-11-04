@@ -29,6 +29,7 @@ sequencing_forms/
 sampling/
 NCBI_sub/
 manuscript/
+figures/old/
 **/tools/
 **/extras/
 .Rproj.user
