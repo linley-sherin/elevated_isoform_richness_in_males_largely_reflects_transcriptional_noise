@@ -15,12 +15,15 @@
 #
 # Reads:  data/03_data_analysis/03_mastertable/ (via lib/load_mt.R)
 #         data/03_data_analysis/02_orf_status/sqanti_w_orf.csv
+#         data/02_build_shortread_transcriptome/05_edgeR/0[12]_*_TMMTPMmatrix_short.csv
 # Writes: data/03_data_analysis/05_overview_plots/plots/fig2[BCD]_*.rds   panels for 14_assemble_figures.R
 #         figures/05_isoform_count_histogram.png      Fig 2B
 #         figures/05_relabund_histogram.png           Fig 2C
 #         figures/05_potential_histo_w_codingstatus.png   Fig 2D
 #         figures/05_expression_vs_richness_diversity.png Supp Fig S5
 #         figures/05_exp_pca.png, 05_exp_isoformheatmap.png, 05_exp_alltogether.png   Supp Fig S4
+#         figures/05_exp_pca_short.png, 05_exp_isoformheatmap_short.png   short-read versions (reviewer)
+#         data/03_data_analysis/05_overview_plots/plots/figS4_*.rds   panels for 14_assemble_figures.R
 #         figures/05_RA_Ineffective_ManuscriptPlot.png    Supp Fig S6
 #
 # Overwrites its outputs every time it runs.
@@ -540,116 +543,103 @@ ggsave(
 ### (5) Expression PCA
 ################################################################################
 
-### PCA based on gene expresseion
-gene_mat_long <- mt_samp %>%
+# PCA and heatmap are made the same way for long and short reads
+# (reviewer asked for both). Values are log2(TPM + 1); gene TPM is the sum
+# of its isoforms; anything not expressed in a sample is 0.
+
+### Expression matrices (samples x genes or isoforms)
+
+# Long reads (sample-level mastertable)
+long_gene_mat <- mt_samp %>%
   group_by(sample, gene) %>%
-  summarise(log2_geneTPM = mean(log2_geneTPM, na.rm = TRUE),
-            .groups = "drop")
-
-gene_mat_wide <- gene_mat_long %>%
-  pivot_wider(
-    names_from = gene,
-    values_from = log2_geneTPM
-  )
-
-gene_mat <- gene_mat_wide %>%
+  summarise(value = mean(log2_geneTPM, na.rm = TRUE), .groups = "drop") %>%
+  pivot_wider(names_from = gene, values_from = value) %>%
   column_to_rownames("sample") %>%
   as.matrix()
 
-gene_mat[is.na(gene_mat)] <- 0
-
-gene_mat <- gene_mat[, apply(gene_mat, 2, var, na.rm = TRUE) > 0]
-
-pca_res <- prcomp(gene_mat,
-                  center = TRUE,
-                  scale. = TRUE)
-
-sample_info <- data.frame(
-  sample = rownames(pca_res$x)
-)
-
-sample_info$sex <- ifelse(grepl("F", sample_info$sample),
-                          "female", "male")
-
-sample_info$tissue <- ifelse(grepl("G", sample_info$sample),
-                             "gonad", "tail")
-
-pca_df <- as.data.frame(pca_res$x) %>%
-  tibble::rownames_to_column("sample") %>%
-  left_join(sample_info, by = "sample")
-
-# Percent variance explained
-percent_var <- (pca_res$sdev^2 / sum(pca_res$sdev^2)) * 100
-
-# Create axis labels
-pc1_lab <- paste0("PC1 (", round(percent_var[1], 1), "%)")
-pc2_lab <- paste0("PC2 (", round(percent_var[2], 1), "%)")
-
-p2 <- ggplot(pca_df, aes(PC1, PC2, color = sex, shape = tissue)) +
-  geom_point(size = 2) +
-  theme_classic() +
-  labs(
-    x = pc1_lab,
-    y = pc2_lab,
-    title = "Gene Expression")
-
-
-### PCA based on isoform expression
-isoform_mat_long <- mt_samp %>%
+long_isoform_mat <- mt_samp %>%
   group_by(sample, transcript) %>%
-  summarise(log2_isoformTPM = mean(log2_isoformTPM, na.rm = TRUE),
-            .groups = "drop")
-
-isoform_mat_wide <- isoform_mat_long %>%
-  pivot_wider(
-    names_from = transcript,
-    values_from = log2_isoformTPM
-  )
-
-isoform_mat <- isoform_mat_wide %>%
+  summarise(value = mean(log2_isoformTPM, na.rm = TRUE), .groups = "drop") %>%
+  pivot_wider(names_from = transcript, values_from = value) %>%
   column_to_rownames("sample") %>%
   as.matrix()
 
-isoform_mat[is.na(isoform_mat)] <- 0
+# Short reads (TMM-TPM matrices from the short-read pipeline)
+short_tpm <- bind_rows(
+  read.csv(here::here("data",
+                      "02_build_shortread_transcriptome",
+                      "05_edgeR",
+                      "01_gonadtran_TMMTPMmatrix_short.csv"))[, -1],
+  read.csv(here::here("data",
+                      "02_build_shortread_transcriptome",
+                      "05_edgeR",
+                      "02_tailtran_TMMTPMmatrix_short.csv"))[, -1]
+) %>%
+  pivot_longer(cols = matches("^R[FM][GT][0-9]$"),  # sample columns (RFG1 etc.)
+               names_to = "sample",
+               values_to = "isoformTPM") %>%
+  filter(!is.na(isoformTPM))  # each tissue only has its own samples
 
-isoform_mat <- isoform_mat[, apply(isoform_mat, 2, var, na.rm = TRUE) > 0]
+short_gene_mat <- short_tpm %>%
+  group_by(sample, gene) %>%
+  summarise(value = log2(sum(isoformTPM) + 1), .groups = "drop") %>%
+  pivot_wider(names_from = gene, values_from = value) %>%
+  column_to_rownames("sample") %>%
+  as.matrix()
 
-pca_res <- prcomp(isoform_mat,
-                  center = TRUE,
-                  scale. = TRUE)
+short_isoform_mat <- short_tpm %>%
+  mutate(value = log2(isoformTPM + 1)) %>%
+  dplyr::select(sample, transcript, value) %>%
+  pivot_wider(names_from = transcript, values_from = value) %>%
+  column_to_rownames("sample") %>%
+  as.matrix()
 
-sample_info <- data.frame(
-  sample = rownames(pca_res$x)
-)
+# Set missing values to 0 and drop features with no variance
+clean_mat <- function(mat) {
+  mat[is.na(mat)] <- 0
+  mat[, apply(mat, 2, var) > 0]
+}
 
-sample_info$sex <- ifelse(grepl("F", sample_info$sample),
-                          "female", "male")
+long_gene_mat <- clean_mat(long_gene_mat)
+long_isoform_mat <- clean_mat(long_isoform_mat)
+short_gene_mat <- clean_mat(short_gene_mat)
+short_isoform_mat <- clean_mat(short_isoform_mat)
 
-sample_info$tissue <- ifelse(grepl("G", sample_info$sample),
-                             "gonad", "tail")
+### PCA
 
-pca_df <- as.data.frame(pca_res$x) %>%
-  tibble::rownames_to_column("sample") %>%
-  left_join(sample_info, by = "sample")
+plot_pca <- function(mat, title) {
+  pca_res <- prcomp(mat,
+                    center = TRUE,
+                    scale. = TRUE)
 
-# Percent variance explained
-percent_var <- (pca_res$sdev^2 / sum(pca_res$sdev^2)) * 100
+  # Percent variance explained
+  percent_var <- (pca_res$sdev^2 / sum(pca_res$sdev^2)) * 100
 
-# Create axis labels
-pc1_lab <- paste0("PC1 (", round(percent_var[1], 1), "%)")
-pc2_lab <- paste0("PC2 (", round(percent_var[2], 1), "%)")
+  pca_df <- as.data.frame(pca_res$x) %>%
+    tibble::rownames_to_column("sample") %>%
+    mutate(sex = ifelse(grepl("F", sample), "female", "male"),
+           tissue = ifelse(grepl("G", sample), "gonad", "tail"))
 
-p3 <- ggplot(pca_df, aes(PC1, PC2, color = sex, shape = tissue)) +
-  geom_point(size = 2) +
-  theme_classic() +
-  labs(x = pc1_lab,
-       y = pc2_lab,
-       title = "Isoform Expression")
+  ggplot(pca_df, aes(PC1, PC2, color = sex, shape = tissue)) +
+    geom_point(size = 2) +
+    theme_classic() +
+    labs(x = paste0("PC1 (", round(percent_var[1], 1), "%)"),
+         y = paste0("PC2 (", round(percent_var[2], 1), "%)"),
+         title = title)
+}
+
+p2 <- plot_pca(long_gene_mat, "Gene Expression (long reads)")
+p3 <- plot_pca(long_isoform_mat, "Isoform Expression (long reads)")
+p2_short <- plot_pca(short_gene_mat, "Gene Expression (short reads)")
+p3_short <- plot_pca(short_isoform_mat, "Isoform Expression (short reads)")
+
 p2
 p3
+p2_short
+p3_short
 
 p23 <- p2/p3
-p23
+p23_short <- p2_short/p3_short
 
 # Save
 ggsave(
@@ -659,26 +649,17 @@ ggsave(
   height = 6,
   dpi = 300
 )
+ggsave(
+  filename = here::here("figures", "05_exp_pca_short.png"),
+  plot = p23_short,
+  width = 4,
+  height = 6,
+  dpi = 300
+)
 
 ################################################################################
 ### (6) Clustered heatmap based on isoform expression
 ################################################################################
-
-# Filter top variable isoforms
-isoform_mat_t <- t(isoform_mat)
-isoform_var <- apply(isoform_mat_t, 1, var)          # variance per isoform
-top_isoforms <- names(sort(isoform_var, decreasing = TRUE))[1:1000]
-isoform_mat_top <- isoform_mat_t[top_isoforms, , drop = FALSE]  # subset rows
-
-# Column annotations for sex + tissue
-sample_info <- data.frame(
-  sample = colnames(isoform_mat_top)
-) %>%
-  mutate(
-    sex = factor(ifelse(grepl("F", sample), "Female", "Male")),
-    tissue = factor(ifelse(grepl("G", sample), "Gonad", "Tail"))
-  ) %>%
-  column_to_rownames("sample")
 
 # Annotation colors (user can customize tissue)
 ann_colors <- list(
@@ -686,33 +667,56 @@ ann_colors <- list(
   tissue = c(Gonad = "black", Tail = "grey")  # you can change these
 )
 
-# Precompute column clustering
-col_dist <- dist(t(isoform_mat_top), method = "euclidean")
-col_hclust <- hclust(col_dist, method = "complete")
+plot_heatmap <- function(mat) {
+  # Filter top variable isoforms
+  mat_t <- t(mat)
+  isoform_var <- apply(mat_t, 1, var)          # variance per isoform
+  top_isoforms <- names(sort(isoform_var, decreasing = TRUE))[1:1000]
+  mat_top <- mat_t[top_isoforms, , drop = FALSE]  # subset rows
 
-# Flip the dendrogram node manually
-# This example flips the second branch (swap left/right)
-# You can inspect col_hclust$labels and adjust order manually
-col_hclust$order <- rev(col_hclust$order)  # simple full flip
-# Or for selective flip, swap segments of col_hclust$order manually
+  # Column annotations for sex + tissue
+  sample_info <- data.frame(
+    sample = colnames(mat_top)
+  ) %>%
+    mutate(
+      sex = factor(ifelse(grepl("F", sample), "Female", "Male")),
+      tissue = factor(ifelse(grepl("G", sample), "Gonad", "Tail"))
+    ) %>%
+    column_to_rownames("sample")
 
-# Draw heatmap with precomputed cluster
-p4 <- pheatmap(
-  isoform_mat_top,
-  scale = "row",
-  cluster_rows = TRUE,
-  cluster_cols = col_hclust,   # use precomputed and flipped dendrogram
-  annotation_col = sample_info,
-  annotation_colors = ann_colors,
-  show_rownames = FALSE,
-  show_colnames = TRUE,
-  fontsize = 10,
-  angle_col = "45")
+  # Precompute column clustering
+  col_dist <- dist(t(mat_top), method = "euclidean")
+  col_hclust <- hclust(col_dist, method = "complete")
 
-p4
+  # Flip the dendrogram node manually
+  # This example flips the second branch (swap left/right)
+  # You can inspect col_hclust$labels and adjust order manually
+  col_hclust$order <- rev(col_hclust$order)  # simple full flip
+  # Or for selective flip, swap segments of col_hclust$order manually
 
-# Convert it to a ggplot object
-p4_gg <- as.ggplot(p4)
+  # Draw heatmap with precomputed cluster
+  hm <- pheatmap(
+    mat_top,
+    scale = "row",
+    cluster_rows = TRUE,
+    cluster_cols = col_hclust,   # use precomputed and flipped dendrogram
+    annotation_col = sample_info,
+    annotation_colors = ann_colors,
+    show_rownames = FALSE,
+    show_colnames = FALSE,   # sample names too crowded to read in the figure
+    fontsize = 10,
+    angle_col = "45",
+    silent = TRUE)
+
+  # Convert it to a ggplot object
+  as.ggplot(hm)
+}
+
+p4_gg <- plot_heatmap(long_isoform_mat)
+p4_gg_short <- plot_heatmap(short_isoform_mat)
+
+p4_gg
+p4_gg_short
 
 ggsave(
   filename = here::here("figures", "05_exp_isoformheatmap.png"),
@@ -721,6 +725,21 @@ ggsave(
   height = 8,
   dpi = 300
 )
+ggsave(
+  filename = here::here("figures", "05_exp_isoformheatmap_short.png"),
+  plot = p4_gg_short,
+  width = 6.5,
+  height = 8,
+  dpi = 300
+)
+
+# Panels for Supp Fig S4 (built in 14_assemble_figures.R)
+saveRDS(p2, file.path(plot_dir, "figS4_pca_gene_long.rds"))
+saveRDS(p3, file.path(plot_dir, "figS4_pca_isoform_long.rds"))
+saveRDS(p4_gg, file.path(plot_dir, "figS4_heatmap_long.rds"))
+saveRDS(p2_short, file.path(plot_dir, "figS4_pca_gene_short.rds"))
+saveRDS(p3_short, file.path(plot_dir, "figS4_pca_isoform_short.rds"))
+saveRDS(p4_gg_short, file.path(plot_dir, "figS4_heatmap_short.rds"))
 
 ### PATCHWORK
 
