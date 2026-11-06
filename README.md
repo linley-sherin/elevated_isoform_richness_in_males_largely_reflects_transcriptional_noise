@@ -1,8 +1,10 @@
 # Elevated isoform richness in males largely reflects transcriptional noise
 
-Code for manuscript https://doi.org/10.64898/2026.08.10.744030.
+Code for manuscript https://doi.org/10.64898/2026.08.10.744030. 
+Please reach out with any questions linley@zoology.ubc.ca.
 
-The code is also archived on Zenodo: https://doi.org/10.5281/zenodo.24022530.
+
+This code is also archived on Zenodo: https://doi.org/10.5281/zenodo.24022530.
 
 ## Directory structure
 
@@ -10,7 +12,7 @@ The code is also archived on Zenodo: https://doi.org/10.5281/zenodo.24022530.
 01_build_longread_transcriptome/   PacBio Iso-Seq workflow, orthogonal short-read data, QC
 02_build_shortread_transcriptome/  Short-read transcriptome built with StringTie
 03_data_analysis/                  analyses and figures
-tools/                             third-party tools (not tracked)
+tools/                             other programs used (not tracked)
 data/                              inputs and outputs, one folder per section (not tracked)
 ```
 
