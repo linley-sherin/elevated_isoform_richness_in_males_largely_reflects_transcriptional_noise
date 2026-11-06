@@ -2,6 +2,8 @@
 
 Code for manuscript https://doi.org/10.64898/2026.08.10.744030.
 
+The code is also archived on Zenodo: https://doi.org/10.5281/zenodo.24022530.
+
 ## Directory structure
 
 ```
@@ -55,3 +57,7 @@ bash 01_build_longread_transcriptome/07_illumina_cutadapt.sh
 ```
 
 Each script's header lists what it reads and writes. Shell scripts skip outputs that already exist.
+
+## License
+
+Code is released under the MIT License (see [LICENSE](LICENSE)).
