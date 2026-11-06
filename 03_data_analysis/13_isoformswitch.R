@@ -392,13 +392,21 @@ loss_prop <- loss_df %>%
     label = n
   )
 
+# Is loss of coding more common in males than expected by chance (50:50)?
+loss_counts <- table(loss_df$loss_direction)
+loss_counts
+loss_test <- binom.test(
+  x = loss_counts["Male loss \nof coding"],
+  n = sum(loss_counts),
+  p = 0.5
+)
+loss_test
+
 loss_plot <- ggplot(loss_prop, aes(x = loss_direction, y = proportion)) +
   geom_col(fill = "#C88E82") +
-  geom_text(
-    aes(label = label),
-    position = position_stack(vjust = 0.5), 
-    size = 3
-  ) +
+  geom_text(aes(label = label), vjust = -0.5) +  # counts above the bars, as in 5B
+  annotate("text", x = 1.5, y = 1.02, size = 7,
+           label = ifelse(loss_test$p.value < 0.05, "*", "")) +
   scale_y_continuous(
     labels = scales::percent,
     limits = c(0, 1.1)
@@ -418,17 +426,6 @@ loss_plot <- ggplot(loss_prop, aes(x = loss_direction, y = proportion)) +
 
 loss_plot
 saveRDS(loss_plot, file.path(plot_dir, "fig5C_loss.rds"))
-
-# counts
-loss_counts <- table(loss_df$loss_direction)
-
-loss_counts
-
-binom.test(
-  x = loss_counts["Male loss \nof coding"],
-  n = sum(loss_counts),
-  p = 0.5
-)
 
 ################################################################################
 ### (5) Summary table for plotting
