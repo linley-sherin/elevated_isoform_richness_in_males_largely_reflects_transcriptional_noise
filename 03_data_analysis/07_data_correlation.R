@@ -13,6 +13,7 @@
 #         data/02_build_shortread_transcriptome/05_edgeR/
 #           01_gonadtran_TMMTPMmatrix_short.csv, 02_tailtran_TMMTPMmatrix_short.csv
 # Writes: figures/07_data_corr.png                                Fig 1C
+#         data/03_data_analysis/07_data_correlation/plots/fig1C_corr.rds  Fig 1C panel for 14
 #
 # Overwrites its outputs every time it runs.
 
@@ -136,3 +137,7 @@ p_corr
 # Save
 ggsave(here::here("figures", "07_data_corr.png"),
        plot = p_corr, width = 5, height = 4, dpi = 300)
+
+plot_dir <- here::here("data", "03_data_analysis", "07_data_correlation", "plots")
+dir.create(plot_dir, recursive = TRUE, showWarnings = FALSE)
+saveRDS(p_corr, file.path(plot_dir, "fig1C_corr.rds"))

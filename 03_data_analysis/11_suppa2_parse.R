@@ -22,7 +22,9 @@
 #         data/03_data_analysis/10_match_transcripts/0_matched_ids.csv
 #         data/03_data_analysis/09_suppa2/ (events .ioe, events_summary_combined.tsv)
 #         data/GTF/04_filtered_by_exp_long.gtf, data/GTF/06_shortreadpipe_filtered_by_exp_short.gtf
-# Writes: nothing (plots and tables are shown in the session)
+# Writes: data/03_data_analysis/11_suppa2_parse/plots/fig1B_isoforms.rds         Fig 1B
+#         data/03_data_analysis/11_suppa2_parse/plots/fig1E_events.rds          Fig 1E (list, one plot per event type)
+#         data/03_data_analysis/11_suppa2_parse/plots/fig1F_sig_events.rds      Fig 1F (list, one plot per event type)
 
 library(multcompView)
 library(emmeans)
@@ -177,13 +179,15 @@ plot_data_iso_match <- matched_tran %>%
   )
 
 total_isoforms <- sum(plot_data_iso_match$count, na.rm = TRUE)
+# Label stored in the data so the saved plot (rds) does not need total_isoforms
+plot_data_iso_match$pct_label <- paste0(round(plot_data_iso_match$count / total_isoforms * 100, 1), "%")
 y_max_iso <- max(plot_data_iso_match$count, na.rm = TRUE) * 1.25
 
 p_iso_concordance <- ggplot(plot_data_iso_match, aes(x = match_status, y = count)) +
   # Set fill directly to a single gray color instead of mapping it to a variable
   geom_bar(stat = "identity", width = 0.85, fill = "grey60", color = "white", linewidth = 0.3) +
   geom_text(
-    aes(label = paste0(round((count / total_isoforms) * 100, 1), "%")),
+    aes(label = pct_label),
     vjust = -0.5,       
     size = 3.5,         
     color = "#2c3e50"   
@@ -203,6 +207,11 @@ p_iso_concordance <- ggplot(plot_data_iso_match, aes(x = match_status, y = count
   )
 
 p_iso_concordance
+
+# Save panels for 14
+plot_dir <- here::here("data", "03_data_analysis", "11_suppa2_parse", "plots")
+dir.create(plot_dir, recursive = TRUE, showWarnings = FALSE)
+saveRDS(p_iso_concordance, file.path(plot_dir, "fig1B_isoforms.rds"))
 
 # clean up
 rm(lr_lookup)
@@ -678,6 +687,7 @@ final_vertical_stack <- wrap_plots(row_plots, ncol = 1)
 
 # Render layout
 final_vertical_stack
+saveRDS(row_plots, file.path(plot_dir, "fig1E_events.rds"))
 
 ################################################################################
 ### (6) Parse SUPPA2 results
@@ -1008,6 +1018,7 @@ final_vertical_stack_sig <- wrap_plots(row_plots, ncol = 1)
 
 # Render layout window
 final_vertical_stack_sig
+saveRDS(row_plots, file.path(plot_dir, "fig1F_sig_events.rds"))
 
 
 ### Find the # of genes that show sex-biased splicing in each tissue+mode
