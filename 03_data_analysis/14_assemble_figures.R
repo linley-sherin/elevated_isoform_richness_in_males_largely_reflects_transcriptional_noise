@@ -1,5 +1,5 @@
 ## Step 14: Assemble paper figures from saved panels
-## Last modified by Linley Sherin 2026-11-03
+## Last modified by Linley Sherin 2026-11-10
 #
 # Runs locally. Builds the multi-panel paper figures with patchwork from the
 # ggplot panels saved (.rds) by the analysis scripts, plus schematic images.
@@ -30,7 +30,7 @@
 #         figures/14_fig3.png, figures/14_fig3.pdf   (approved)
 #         figures/14_fig4.png, figures/14_fig4.pdf   (approved)
 #         figures/14_fig5.png, figures/14_fig5.pdf   (approved)
-#         figures/test/14_fig1.png, figures/test/14_fig1.pdf (not yet approved)
+#         figures/14_fig1.png, figures/14_fig1.pdf   (approved)
 #
 # Overwrites its outputs every time it runs.
 
@@ -395,8 +395,9 @@ exons <- function(df, y, fill = exon_grey) {
   geom_rect(data = df, aes(xmin = start, xmax = end, ymin = y - 0.25, ymax = y + 0.25),
             fill = fill, inherit.aes = FALSE)
 }
+exon_half <- 0.17  # half-height of the D exon boxes
 junction <- function(x1, x2, y, up = TRUE, h = 0.5) {
-  ys <- if (up) y + 0.25 else y - 0.25
+  ys <- if (up) y + exon_half else y - exon_half
   yp <- if (up) ys + h else ys - h
   annotate("path", x = c(x1, (x1 + x2) / 2, x2), y = c(ys, yp, ys), colour = "grey35", linewidth = 0.35)
 }
@@ -411,17 +412,17 @@ iso_introns <- do.call(rbind, lapply(split(iso, iso$row), function(d)
   data.frame(row = d$row[-1], x1 = head(d$end, -1), x2 = d$start[-1])))
 fig1A <- ggplot() +
   geom_segment(data = iso_introns, aes(x = x1, xend = x2, y = row, yend = row), colour = "grey60", linewidth = 0.8) +
-  geom_rect(data = iso, aes(xmin = start, xmax = end, ymin = row - 0.17, ymax = row + 0.17), fill = "grey60") +
+  geom_rect(data = iso, aes(xmin = start, xmax = end, ymin = row - 0.24, ymax = row + 0.24), fill = "grey60") +
   labs(title = expression(underline("Isoform-level"))) +
-  coord_cartesian(xlim = c(-1.5, 20.7), ylim = c(0, 4.5), expand = FALSE) +  # white space either side
-  schematic_theme
+  coord_cartesian(xlim = c(-1.5, 20.7), ylim = c(-0.13, 5.13), expand = FALSE) +  # white space either side; isoforms centred
+  schematic_theme + theme(plot.title = element_text(margin = margin(t = 12, b = 14)))  # title level with the panel letter, as in D
 
 # D: event-level (local splicing events), one schematic per event type
 event_panel <- function(title, draw) {
   ggplot() + draw + labs(title = title) + coord_cartesian(xlim = c(0, 10), ylim = c(-1.1, 1.1)) +
-    theme_void() + theme(plot.title = element_text(size = 12, hjust = 0.5, margin = margin(b = 0)))
+    theme_void() + theme(plot.title = element_text(size = 12, hjust = 0.5, margin = margin(t = 5, b = -5)))  # title ~1.8 mm closer to its schematic
 }
-ex <- function(x1, x2, fill = exon_grey, y = 0) annotate("rect", xmin = x1, xmax = x2, ymin = y - 0.25, ymax = y + 0.25, fill = fill)
+ex <- function(x1, x2, fill = exon_grey, y = 0) annotate("rect", xmin = x1, xmax = x2, ymin = y - exon_half, ymax = y + exon_half, fill = fill)
 d_es <- event_panel("Exon skipping (ES)", list(backbone(1, 9, 0), ex(1.5, 3.5), ex(4.2, 5.8, event_cols["ES"]), ex(6.5, 8.5),
   junction(3.5, 4.2, 0), junction(5.8, 6.5, 0), junction(3.5, 6.5, 0, up = FALSE)))
 d_mx <- event_panel("Mutually exclusive exons (MX)", list(backbone(0.5, 9.5, 0), ex(1, 2.6), ex(3.3, 4.7, event_cols["MX"]),
@@ -434,8 +435,12 @@ d_a35 <- event_panel("Alternative 3\u2032/5\u2032 splice sites (A3/A5)", list(
   junction(6.8, 7.7, 0), junction(6.8, 8.2, 0, up = FALSE)))
 d_ir <- event_panel("Intron retention (IR)", list(backbone(1, 9, 0), ex(1.5, 3.8), ex(3.8, 6.2, event_cols["IR"]), ex(6.2, 8.5),
   junction(3.8, 6.2, 0, h = 0.4)))
+event_head <- 0.10  # space for the "Event-level" title, also left empty above E and F
+event_foot <- 0.21  # space under D matching the x-axis labels under E and F
+event_head_ef <- 0.21  # E and F start lower so each row lines up with its D schematic
 fig1D <- wrap_elements(full = (ggplot() + labs(title = expression(underline("Event-level"))) + schematic_theme) /
-                         d_es / d_mx / d_a35 / d_ir + plot_layout(heights = c(0.15, 1, 1, 1, 1)))
+                         d_es / d_mx / d_a35 / d_ir / plot_spacer() +
+                         plot_layout(heights = c(event_head, 1, 1, 1, 1, event_foot)))
 
 # B: isoforms detected by each dataset
 fig1B <- readRDS(file.path(fig1_dir, "fig1B_isoforms.rds")) + labs(y = "Isoforms") + fig1_text +
@@ -445,34 +450,45 @@ fig1B <- readRDS(file.path(fig1_dir, "fig1B_isoforms.rds")) + labs(y = "Isoforms
 fig1C_cols <- c("#1A151D", "#302840", "#3F3E61", "#485682", "#536E95", "#5C879D", "#6BA0A5", "#7DB9AB", "#A0D0BB", "#CDE7D8")
 fig1C <- readRDS(here::here("data", "03_data_analysis", "07_data_correlation", "plots", "fig1C_corr.rds")) +
   scale_fill_gradientn(colours = fig1C_cols, trans = "log10") +
-  labs(fill = "Gene\ncount", x = "Long-read\nexpression", y = "Short-read\nexpression") +  # 2-line titles fit the short row
+  labs(fill = "Gene\ncount", x = "Long-read expression", y = "Short-read expression") +
   fig1_text + theme(legend.title = element_text(size = 9), legend.text = element_text(size = 8),
+                    axis.title = element_text(size = 10),  # one-line titles; ~7 pt at 170 mm
                     # narrow legend so the plot keeps most of the width
                     legend.key.width = unit(0.25, "cm"), legend.key.height = unit(0.45, "cm"),
                     legend.margin = margin(0, 0, 0, 0), legend.box.spacing = unit(3, "pt"),
                     plot.margin = margin(16, 2, 2, 22),  # clear of the panel letter
-                    aspect.ratio = 0.8)  # a little wider than tall to fit the short row
+                    aspect.ratio = 1)  # square, with the legend beside it
 for (l in fig1C$layers) {  # smaller r label
   if (inherits(l$geom, "GeomText")) l$aes_params$size <- 10 / .pt
 }
 
 # E, F: events (and significant events) detected by each dataset, one row per event type
-event_stack <- function(file, ytitle) {
+event_stack <- function(file, ytitle, title_gap = 8, shift = 0) {
   rows <- readRDS(file.path(fig1_dir, file))
   rows <- lapply(rows, function(p) p + labs(y = ytitle) + fig1_text +
-                   theme(axis.title.y = element_text(size = 12, angle = 90, face = "plain", colour = "black", margin = margin(r = 8))))
-  wrap_plots(rows, ncol = 1) + plot_layout(axis_titles = "collect")
+                   theme(axis.title.y = element_text(size = 12, angle = 90, face = "plain", colour = "black", margin = margin(r = title_gap))))
+  # space above so each event row lines up with its D schematic
+  wrap_plots(c(list(plot_spacer()), rows), ncol = 1) +
+    plot_layout(heights = c(event_head_ef, 1, 1, 1, 1), axis_titles = "collect") +
+    plot_annotation(theme = theme(plot.margin = margin(5.5, 5.5 - shift, 5.5, 5.5 + shift)))  # shift right, same width
 }
-fig1E <- wrap_elements(full = event_stack("fig1E_events.rds", "Events"))
+fig1E <- wrap_elements(full = event_stack("fig1E_events.rds", "Events", shift = 8))  # axis title in line with B's
 fig1F <- wrap_elements(full = event_stack("fig1F_sig_events.rds", "Significant events"))
 
-# One 2 x 3 grid so B sits directly above E and C above F, at the same widths
-# (C wrapped so its axis title is not pushed down to line up with B's angled labels)
+# One grid so B sits above E; C also spans a narrow 4th column (empty below, right of F) for its
+# legend, as in the original draft. B, E and F panels are ~16.5% of the figure width.
+# Row 1 heights are set by B's panel; B's bottom margin makes room for a square C below/beside it
+# (B stays unwrapped so its column lines up with E). B is slightly shorter than an F row.
+fig1B <- fig1B + theme(plot.margin = margin(5.5, 5.5, 8, 5.5))
 fig1 <- wrap_elements(full = fig1A) + fig1B + wrap_elements(full = fig1C) +
   fig1D + fig1E + fig1F +
-  plot_layout(ncol = 3, widths = c(1, 0.85, 0.85), heights = c(0.33, 1)) +  # top row sized so B matches one E/F row; E/F keep their size
+  plot_layout(design = "ABCC\nDEF#", widths = c(0.4, 0.207, 0.3, 0.09),
+              heights = c(0.235, 1)) +  # B fills the top row (same height as C)
   plot_annotation(tag_levels = "A") &
   tag_theme
 
-ggsave(file.path(out_dir, "14_fig1.png"), plot = fig1, width = 9, height = 6.05, dpi = 300)
-ggsave(file.path(out_dir, "14_fig1.pdf"), plot = fig1, width = 9, height = 6.05, device = quartz_pdf)
+# Approved 2026-11-10: saved as the final figure (replaces the PowerPoint version)
+ggsave(here::here("figures", "14_fig1.png"),
+       plot = fig1, width = 8.46, height = 6.65, dpi = 300)  # same width:height as the original draft
+ggsave(here::here("figures", "14_fig1.pdf"),
+       plot = fig1, width = 8.46, height = 6.65, device = quartz_pdf)
